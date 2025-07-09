@@ -104,13 +104,14 @@ export function Sidebar({ isAdmin = false }: SidebarProps) {
           return (
             <Link key={item.href} href={item.href}>
               <div className={cn(
-                "flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group",
+                collapsed ? "flex items-center justify-center px-3 py-3 rounded-lg transition-all duration-200 group" : "flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group",
                 isActive 
                   ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-md" 
                   : "text-gray-700 hover:bg-gray-100"
               )}>
                 <item.icon className={cn(
-                  "h-5 w-5 transition-transform duration-200",
+                  collapsed ? "h-10 w-10" : "h-5 w-5",
+                  "transition-transform duration-200",
                   isActive ? "text-white" : "text-gray-500 group-hover:text-gray-700"
                 )} />
                 {!collapsed && (

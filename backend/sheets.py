@@ -220,6 +220,8 @@ def list_employees() -> list[dict]:
 from config import PUBLIC_HOLIDAYS_SHEET_NAME
 from config import LEAVE_APPROVAL_SHEET_NAME
 from config import DOCUMENTS_SHEET_NAME
+# Timesheet sheet constant
+from config import TIMESHEET_SHEET_NAME
 
 
 def find_holiday(name: str, date_str: str) -> bool:
@@ -590,3 +592,156 @@ def list_document_requests() -> list[dict]:
             "timestamp": ts,
         })
     return results
+
+# ---------------------------------------------------------------------------
+# Timesheet helpers
+# ---------------------------------------------------------------------------
+
+from datetime import datetime
+
+
+def append_timesheet_entry(data: dict) -> int:
+    """Append a new timesheet row and return the row number created.
+
+    Expected dict keys:
+    - employee (str): employee email
+    - date (date | str): entry date
+    - project (str)
+    - task_description (str)
+    - duration_hours (float | str)
+    - break_minutes (int | str)
+    """
+
+    svc = _get_sheets_service()
+
+    dt_val = data.get("date")
+    if isinstance(dt_val, date):
+        date_str = dt_val.strftime("%d-%m-%Y")
+    else:
+        date_str = str(dt_val)
+
+    # Ensure numeric strings
+    duration_hours = str(data.get("duration_hours", ""))
+    break_minutes = str(data.get("break_minutes", "0"))
+
+    values = [[
+        "=NOW()",  # A Timestamp
+        data["employee"],  # B Employee
+        date_str,  # C Date
+        data["project"],  # D Project
+        data.get("task_description", ""),  # E Task description
+        duration_hours,  # F Duration hours
+        break_minutes,  # G Break minutes
+    ]]
+
+    resp = svc.values().append(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"'{TIMESHEET_SHEET_NAME}'!A:G",
+        valueInputOption="USER_ENTERED",
+        insertDataOption="INSERT_ROWS",
+        body={"values": values},
+    ).execute()
+
+    updated_range = resp.get("updates", {}).get("updatedRange")
+    row_no = int(updated_range.split("!")[1].split(":")[0][1:]) if updated_range else None
+    return row_no or 0
+
+
+def list_timesheets(
+    *,
+    employee: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    project: str | None = None,
+) -> list[dict]:
+    """Return list of timesheet dicts filtered by optional parameters."""
+
+    svc = _get_sheets_service()
+    resp = svc.values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"'{TIMESHEET_SHEET_NAME}'!A:G",
+    ).execute()
+
+    rows = resp.get("values", [])
+    results: list[dict] = []
+
+    for idx, row in enumerate(rows, start=1):
+        padded = row + [""] * (7 - len(row))
+        (
+            ts,
+            emp,
+            date_s,
+            proj,
+            task_desc,
+            dur_hours,
+            brk_mins,
+        ) = padded[:7]
+
+        if not emp:
+            continue  # skip empty rows
+
+        # Parse date
+        try:
+            date_obj = datetime.strptime(date_s, "%d-%m-%Y").date() if date_s else None
+        except ValueError:
+            date_obj = None
+
+        # Filter conditions
+        if employee and emp.lower() != employee.lower():
+            continue
+        if project and proj.lower() != project.lower():
+            continue
+        if start_date and date_obj and date_obj < start_date:
+            continue
+        if end_date and date_obj and date_obj > end_date:
+            continue
+
+        try:
+            dur_val = float(dur_hours) if dur_hours else 0.0
+        except ValueError:
+            dur_val = 0.0
+
+        try:
+            brk_val = int(brk_mins) if brk_mins else 0
+        except ValueError:
+            brk_val = 0
+
+        results.append(
+            {
+                "row": idx,
+                "timestamp": ts,
+                "employee": emp,
+                "date": date_s,
+                "project": proj,
+                "task_description": task_desc,
+                "duration_hours": dur_val,
+                "break_minutes": brk_val,
+            }
+        )
+
+    return results
+
+
+def summarize_timesheets(employee: str, start_date: date, end_date: date) -> dict:
+    """Aggregate total hours per project for the employee between dates."""
+
+    entries = list_timesheets(
+        employee=employee, start_date=start_date, end_date=end_date
+    )
+
+    project_totals: dict[str, float] = {}
+    for item in entries:
+        proj = item["project"]
+        hrs = item["duration_hours"]
+        project_totals[proj] = project_totals.get(proj, 0.0) + hrs
+
+    total_hours = sum(project_totals.values())
+
+    return {
+        "employee": employee,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "projects": project_totals,
+        "total_hours": total_hours,
+        "entries": len(entries),
+    }

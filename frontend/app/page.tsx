@@ -28,14 +28,7 @@ export default function SignIn() {
   const [error, setError]             = useState<string>('');
   const router                        = useRouter();
 
-  // If already logged in, redirect immediately
-  useEffect(() => {
-    const session = localStorage.getItem('userSession');
-    if (session) {
-      const { role } = JSON.parse(session);
-      router.replace(role === 'admin' ? '/admin/dashboard' : '/employee/dashboard');
-    }
-  }, [router]);
+  // We deliberately do NOT auto-redirect on existing session; user must click Sign In each visit.
 
   const initializeDefaultRoles = async () => {
     const adminRef    = doc(db, 'roles', 'admins');
@@ -44,7 +37,7 @@ export default function SignIn() {
     const employeeSnap= await getDoc(employeeRef);
 
     if (!adminSnap.exists()) {
-      await setDoc(adminRef,    { emails: ['thirupathip.aiml2023@citchennai.net'] });
+      await setDoc(adminRef,    { emails: ['ravikrishnaj25@gmail.com'] });
     }
     if (!employeeSnap.exists()) {
       await setDoc(employeeRef, { emails: ['vengi@citchennai.net'] });

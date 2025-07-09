@@ -5,6 +5,12 @@ from drive import setup_employee_folders, upload_photo, rename_employee_folder, 
 from fastapi.middleware.cors import CORSMiddleware
 from models import EmployeeUpdate, HolidayCreate, LeaveCreate, LeaveUpdate, LeaveStatus, DocumentRequest
 from models import HolidayUpdate
+from models import TimesheetEntryCreate
+
+# Timesheet helpers
+from sheets import append_timesheet_entry, list_timesheets, summarize_timesheets
+from email_utils import send_timesheet_reminder_email
+from datetime import date, datetime, timedelta
 
 # Email utility
 from email_utils import send_leave_status_email
@@ -432,6 +438,113 @@ async def update_profile_photo(email: str, photo: UploadFile = File(...)):
     ).execute()
 
     return {"status": "photo updated", "photo_file_id": new_photo_id}
+
+# ---------------------------------------------------------------------------
+# Timesheet endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/timesheets/")
+async def create_timesheet_entry(payload: TimesheetEntryCreate):
+    """Employee submits a new timesheet entry."""
+
+    try:
+        row_no = append_timesheet_entry(payload.dict())
+        return {"row": row_no, "status": "added"}
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
+
+
+@app.get("/timesheets/")
+async def get_timesheet_entries(
+    employee: str | None = None,
+    start_date: str | None = None,  # dd-mm-yyyy
+    end_date: str | None = None,  # dd-mm-yyyy
+    project: str | None = None,
+):
+    """Return timesheet entries with optional filters."""
+
+    def _parse(d: str | None):
+        if not d:
+            return None
+        try:
+            return datetime.strptime(d, "%d-%m-%Y").date()
+        except ValueError:
+            raise HTTPException(400, "Date must be dd-mm-yyyy")
+
+    start_dt = _parse(start_date)
+    end_dt = _parse(end_date)
+
+    try:
+        return list_timesheets(
+            employee=employee, start_date=start_dt, end_date=end_dt, project=project
+        )
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
+
+
+@app.get("/timesheets/summary")
+async def get_timesheet_summary(employee: str, period: str = "week"):
+    """Return aggregated summary (hours per project) for current week/month."""
+
+    today = date.today()
+
+    period = period.lower()
+    if period == "week":
+        # Monday as first day
+        start_dt = today - timedelta(days=today.weekday())
+        end_dt = start_dt + timedelta(days=6)
+    elif period == "month":
+        start_dt = today.replace(day=1)
+        # Get last day by going to next month-1 day
+        if start_dt.month == 12:
+            next_month = start_dt.replace(year=start_dt.year + 1, month=1, day=1)
+        else:
+            next_month = start_dt.replace(month=start_dt.month + 1, day=1)
+        end_dt = next_month - timedelta(days=1)
+    else:
+        raise HTTPException(400, "Period must be 'week' or 'month'")
+
+    try:
+        return summarize_timesheets(employee, start_dt, end_dt)
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
+
+
+@app.post("/timesheets/reminders/send")
+async def send_timesheet_reminders(target_date: str | None = None):
+    """Send reminder emails to employees missing timesheet for target_date (default today)."""
+
+    # Determine date object and string
+    if target_date:
+        try:
+            tgt_dt = datetime.strptime(target_date, "%d-%m-%Y").date()
+        except ValueError:
+            raise HTTPException(400, "target_date must be dd-mm-yyyy")
+    else:
+        tgt_dt = date.today()
+
+    date_str = tgt_dt.strftime("%d-%m-%Y")
+
+    # Collect employees
+    employees = list_employees()
+    recipients: list[str] = []
+
+    for emp in employees:
+        email_addr = emp.get("email")
+        if not email_addr:
+            continue
+        entries = list_timesheets(employee=email_addr, start_date=tgt_dt, end_date=tgt_dt)
+        if not entries:
+            # No entry found; send reminder
+            try:
+                send_timesheet_reminder_email(email_addr, date_str)
+                recipients.append(email_addr)
+            except Exception as exc:
+                # Log but continue
+                print(f"[WARN] Failed to send reminder to {email_addr}: {exc}")
+
+    return {"date": date_str, "reminders_sent": len(recipients), "recipients": recipients}
 
 if __name__ == "__main__":
     import uvicorn

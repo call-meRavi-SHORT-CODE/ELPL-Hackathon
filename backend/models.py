@@ -66,3 +66,18 @@ class DocumentRequest(BaseModel):
     email: EmailStr
     document_type: str
     reason: str | None = None
+
+# ---------------------------------------------------------------------------
+# Timesheet models
+# ---------------------------------------------------------------------------
+
+
+class TimesheetEntryCreate(BaseModel):
+    """Model for creating a new timesheet entry."""
+
+    employee: EmailStr
+    date: date
+    project: str
+    task_description: str
+    duration_hours: float  # Total hours worked (excluding breaks)
+    break_minutes: int = 0  # Break duration in minutes (optional, default 0)

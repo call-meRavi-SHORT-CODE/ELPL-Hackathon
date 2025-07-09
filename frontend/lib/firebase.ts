@@ -3,7 +3,7 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "<ur api key>",
+  apiKey: "AIzaSyBPuL-o_9u-8MszF4v7HRa7WgKRRsjgquo",
   authDomain: "elpl-1ac90.firebaseapp.com",
   projectId: "elpl-1ac90",
   storageBucket: "elpl-1ac90.firebasestorage.app",
@@ -17,4 +17,4 @@ export const auth = getAuth(app);
 export const db   = getFirestore(app);
 
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ hd: "citchennai.net" });
+googleProvider.setCustomParameters({ hd: "citchennai.net", prompt: "select_account" });

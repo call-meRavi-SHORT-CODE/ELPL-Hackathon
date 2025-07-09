@@ -136,22 +136,10 @@ export default function EmployeeProfilePage() {
         <main className="flex-1 overflow-auto p-6 custom-scrollbar">
           <div className="max-w-6xl mx-auto space-y-6">
             {/* Profile Header */}
-            <Card>
+            <Card className="shadow-2xl bg-gradient-to-br from-blue-50 via-purple-50 to-white border-0">
               <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-0">
-                <CardTitle className="text-2xl font-bold">Profile Information</CardTitle>
-                <Button size="sm" onClick={() => (isEditing ? handleSave() : setIsEditing(true))}>
-                  {isEditing ? (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save Changes
-                    </>
-                  ) : (
-                    <>
-                      <Edit3 className="h-4 w-4 mr-2" />
-                      Edit Profile
-                    </>
-                  )}
-                </Button>
+                <CardTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Profile Information</CardTitle>
+                {/* Edit button removed */}
               </CardHeader>
 
               <CardContent className="pt-6 pb-8">
@@ -217,6 +205,7 @@ export default function EmployeeProfilePage() {
               </CardContent>
             </Card>
 
+            {false && (
             <Tabs defaultValue="personal" className="space-y-6">
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="personal">Personal Info</TabsTrigger>
@@ -350,7 +339,7 @@ export default function EmployeeProfilePage() {
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
                         <Label>Designation</Label>
-                        <Input value={profileData?.designation} disabled={!isEditing} />
+                        <Input value={profileData?.designation} disabled={!isEditing} readOnly={!isEditing} />
                       </div>
                       <div className="space-y-2">
                         <Label>Department</Label>
@@ -369,11 +358,11 @@ export default function EmployeeProfilePage() {
                       </div>
                       <div className="space-y-2">
                         <Label>Employee ID</Label>
-                        <Input value="EMP001" disabled />
+                        <Input value="EMP001" disabled readOnly />
                       </div>
                       <div className="space-y-2">
                         <Label>Reporting Manager</Label>
-                        <Input value="John Smith" disabled />
+                        <Input value="John Smith" disabled readOnly />
                       </div>
                     </CardContent>
                   </Card>
@@ -483,6 +472,7 @@ export default function EmployeeProfilePage() {
                 </Card>
               </TabsContent>
             </Tabs>
+            )}
           </div>
         </main>
       </div>

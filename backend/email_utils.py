@@ -101,3 +101,48 @@ def send_leave_status_email(
         print(f"[EMAIL] Sent leave status email to {to_email} – Gmail ID {msg_id}")
     except Exception as exc:
         print(f"[EMAIL] FAILED to send to {to_email}: {exc}") 
+
+
+# ---------------------------------------------------------------------------
+# Timesheet reminder email helper
+# ---------------------------------------------------------------------------
+
+
+def send_timesheet_reminder_email(to_email: str, target_date: str):
+    """Send a reminder email to the employee to fill their timesheet for target_date.
+
+    Args:
+        to_email: Recipient's email address.
+        target_date: Date string in dd-mm-yyyy format representing the day that
+            does not yet have a timesheet entry.
+    """
+
+    subject = "Timesheet Reminder – Action Required"
+
+    body_lines = [
+        f"Dear Employee,",
+        "",
+        f"Our records indicate that you have not submitted your timesheet for {target_date}.",
+        "Please complete your timesheet as soon as possible to ensure accurate project tracking and billing.",
+        "",
+        "If you have already filled in your timesheet, kindly ignore this message.",
+        "",
+        "Thank you for your prompt attention.",
+        "",
+        "Best regards,",
+        "HR / Admin Team",
+    ]
+
+    message = MIMEText("\n".join(body_lines), "plain")
+    message["to"] = to_email
+    message["subject"] = subject
+
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+    service = _build_gmail_service()
+    try:
+        response = service.users().messages().send(userId="me", body={"raw": raw}).execute()
+        msg_id = response.get("id")
+        print(f"[EMAIL] Sent timesheet reminder to {to_email} – Gmail ID {msg_id}")
+    except Exception as exc:
+        print(f"[EMAIL] FAILED to send reminder to {to_email}: {exc}") 

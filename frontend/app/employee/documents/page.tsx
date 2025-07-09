@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { Sidebar } from '@/components/layout/sidebar';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   FileText, 
   Download, 
-  Upload, 
   Plus,
   Clock,
   CheckCircle,
@@ -23,8 +23,7 @@ import {
   AlertCircle,
   Search,
   Filter,
-  Eye,
-  Trash2
+  Eye
 } from 'lucide-react';
 
 export default function DocumentsPage() {
@@ -33,10 +32,30 @@ export default function DocumentsPage() {
   const [requestType, setRequestType] = useState('');
   const [requestReason, setRequestReason] = useState('');
 
-  const user = {
-    name: 'Ravikrishna J',
-    email: 'ravikrishna@epicallayouts.com'
-  };
+  // (Payslip tab removed)
+   
+  const [user, setUser] = useState<{name:string; email:string; avatar?:string}>({name:'', email:''});
+
+  // Load user session from localStorage (set during sign-in)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const session = localStorage.getItem('userSession');
+    if (session) {
+      const parsed = JSON.parse(session);
+      if (parsed.employee) {
+        setUser({
+          name: parsed.employee.name || parsed.user.displayName,
+          email: parsed.employee.email,
+          avatar: parsed.employee.photo_url,
+        });
+      } else {
+        setUser({
+          name: parsed.user.displayName,
+          email: parsed.user.email,
+        });
+      }
+    }
+  }, []);
 
   const documentCategories = [
     'Bonafide Certificate',
@@ -48,6 +67,7 @@ export default function DocumentsPage() {
     'Insurance Documents'
   ];
 
+  // Currently no real document list from backend; keep one placeholder entry.
   const myDocuments = [
     {
       id: 1,
@@ -55,32 +75,8 @@ export default function DocumentsPage() {
       category: 'Contract',
       uploadDate: '2024-01-15',
       size: '2.4 MB',
-      status: 'active'
+      status: 'active',
     },
-    {
-      id: 2,
-      name: 'Tax Declaration Form.pdf',
-      category: 'Tax Documents',
-      uploadDate: '2024-03-10',
-      size: '1.2 MB',
-      status: 'active'
-    },
-    {
-      id: 3,
-      name: 'Insurance Policy.pdf',
-      category: 'Insurance',
-      uploadDate: '2024-02-20',
-      size: '3.1 MB',
-      status: 'active'
-    },
-    {
-      id: 4,
-      name: 'Previous Experience Letter.pdf',
-      category: 'Experience',
-      uploadDate: '2024-01-10',
-      size: '856 KB',
-      status: 'archived'
-    }
   ];
 
   type DocReq = {
@@ -90,6 +86,10 @@ export default function DocumentsPage() {
     reason: string;
     status: string;
     timestamp: string;
+    // Optional fields returned by backend on certain statuses
+    expectedDate?: string;
+    completedDate?: string;
+    rejectionReason?: string;
   };
 
   const [requests, setRequests] = useState<DocReq[]>([]);
@@ -104,7 +104,11 @@ export default function DocumentsPage() {
       const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
       try {
         const res = await fetch(`${apiBase}/documents/`);
-        if (!res.ok) throw new Error('Failed to fetch requests');
+        if (!res.ok) {
+          // FastAPI’s HTTPException(detail=...) is returned as {"detail": "..."}
+          const { detail } = await res.json().catch(() => ({}));
+          throw new Error(detail || `Request failed (${res.status})`);
+        }
         const data: DocReq[] = await res.json();
         setRequests(data.filter(r => r.email.toLowerCase() === user.email.toLowerCase()));
       } catch (err: any) {
@@ -193,7 +197,7 @@ export default function DocumentsPage() {
         <main className="flex-1 overflow-auto p-6 custom-scrollbar">
           <div className="max-w-7xl mx-auto space-y-6">
             {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Card className="hover:shadow-lg transition-shadow duration-300">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -240,19 +244,7 @@ export default function DocumentsPage() {
                 </CardContent>
               </Card>
 
-              <Card className="hover:shadow-lg transition-shadow duration-300">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Storage Used</p>
-                      <p className="text-3xl font-bold text-purple-600">7.5 MB</p>
-                    </div>
-                    <div className="p-3 bg-purple-100 rounded-full">
-                      <Upload className="h-6 w-6 text-purple-600" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              {/* Storage-used card removed */}
             </div>
 
             <Tabs defaultValue="documents" className="space-y-6">
@@ -261,6 +253,8 @@ export default function DocumentsPage() {
                 <TabsTrigger value="request">Request Document</TabsTrigger>
                 <TabsTrigger value="history">Request History</TabsTrigger>
               </TabsList>
+
+              {/* Payslip tab removed */}
 
               {/* My Documents */}
               <TabsContent value="documents" className="space-y-6">

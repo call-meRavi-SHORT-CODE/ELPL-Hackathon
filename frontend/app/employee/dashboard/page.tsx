@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +21,9 @@ import {
   Coffee,
   Activity
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { toast } from '@/hooks/use-toast';
+import { fetchTimesheetsFiltered, fetchTimesheetSummary, fetchLeaves, LeaveEntry } from '@/lib/api';
 
 export default function EmployeeDashboard() {
   const [user, setUser] = useState<{name:string; email:string; avatar?:string}>({name:'', email:''});
@@ -44,31 +48,98 @@ export default function EmployeeDashboard() {
     }
   }, []);
 
-  const todayStats = {
-    checkedIn: '08:37 AM',
-    totalHours: '8:20',
-    breakTime: '45 min',
-    status: 'Present'
+  const [todayStats, setTodayStats] = useState<{ checkedIn: string; totalHours: string; breakTime: string; status: string }>({ checkedIn: '-', totalHours: '0:00', breakTime: '0 min', status: 'Absent' });
+
+  const [leaveBalance, setLeaveBalance] = useState<{ casual: number; sick: number; earned: number; total: number }>({ casual: 0, sick: 0, earned: 0, total: 0 });
+
+  const [recentTimesheets, setRecentTimesheets] = useState<Array<{ date: string; project: string; hours: string; status: string }>>([]);
+
+  // ------------------------------------------------------------------
+  const loadDashboardData = async (email: string) => {
+    try {
+      const today = new Date();
+      const todayStr = format(today, 'dd-MM-yyyy');
+
+      // Fetch today's entries
+      const todayEntries = await fetchTimesheetsFiltered({ employee: email, start_date: todayStr, end_date: todayStr });
+
+      let checkedIn = '-';
+      let breakTotal = 0;
+      let durationTotalMin = 0;
+
+      if (todayEntries.length > 0) {
+        // currently backend lacks start_time; derive from first entry's timestamp maybe not accurate, fallback '-'
+        // We'll just show Present if any entry
+        checkedIn = '—';
+        todayEntries.forEach((e) => {
+          durationTotalMin += Math.round(e.duration_hours * 60);
+          breakTotal += e.break_minutes;
+        });
+      }
+
+      const hours = Math.floor(durationTotalMin / 60);
+      const mins  = durationTotalMin % 60;
+
+      setTodayStats({
+        checkedIn,
+        totalHours: `${hours}h ${mins}m`,
+        breakTime: `${breakTotal} min`,
+        status: todayEntries.length > 0 ? 'Present' : 'Absent',
+      });
+
+      // Recent timesheets – last 3 entries overall
+      const recent = await fetchTimesheetsFiltered({ employee: email });
+      const recentSorted = [...recent].sort((a, b) => {
+        // sort by date descending (dd-mm-yyyy)
+        const [da, ma, ya] = a.date.split('-');
+        const [db, mb, yb] = b.date.split('-');
+        return new Date(`${ya}-${ma}-${da}`).getTime() > new Date(`${yb}-${mb}-${db}`).getTime() ? -1 : 1;
+      }).slice(0,3);
+
+      setRecentTimesheets(recentSorted.map((e) => ({
+        date: `${e.date}`,
+        project: e.project,
+        hours: `${e.duration_hours.toFixed(2)}h`,
+        status: 'approved', // backend hasn't status; placeholder
+      })));
+
+      // Leave balance – simplistic count accepted leaves this year
+      const leaves = await fetchLeaves();
+      const thisYear = format(today, 'yyyy');
+      const userLeaves = leaves.filter((l: LeaveEntry) => l.employee.toLowerCase() === email.toLowerCase() && l.status.toLowerCase() === 'accepted');
+
+      const counts: Record<string, number> = { casual: 0, sick: 0, earned: 0 };
+      userLeaves.forEach((l) => {
+        const yr = l.applied_date.split('-')[2];
+        if (yr === thisYear) {
+          const type = l.leave_type.toLowerCase();
+          if (type.includes('casual')) counts.casual += 1;
+          else if (type.includes('sick')) counts.sick += 1;
+          else counts.earned += 1;
+        }
+      });
+
+      const totals = { casual: counts.casual, sick: counts.sick, earned: counts.earned, total: counts.casual + counts.sick + counts.earned };
+      setLeaveBalance(totals);
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Error', description: 'Failed to load dashboard data', variant: 'destructive' });
+    }
   };
 
-  const leaveBalance = {
-    casual: 12,
-    sick: 8,
-    earned: 15,
-    total: 35
-  };
+  useEffect(() => {
+    if (user.email) {
+      loadDashboardData(user.email);
+    }
+  }, [user.email]);
 
-  const recentTimesheets = [
-    { date: '2025-01-25', project: 'Website Redesign', hours: '8:30', status: 'approved' },
-    { date: '2025-01-24', project: 'Mobile App UI', hours: '8:15', status: 'approved' },
-    { date: '2025-01-23', project: 'Brand Guidelines', hours: '8:45', status: 'pending' },
-  ];
+  const router = useRouter();
 
   const quickActions = [
-    { icon: Clock, label: 'Check In/Out', action: 'timesheet', color: 'blue' },
-    { icon: Calendar, label: 'Apply Leave', action: 'leave', color: 'green' },
-    { icon: FileText, label: 'View Payslip', action: 'payslip', color: 'purple' },
-    { icon: User, label: 'Update Profile', action: 'profile', color: 'orange' },
+    { icon: Clock, label: 'Check In/Out', path: '/employee/timesheet', color: 'blue' },
+    { icon: Calendar, label: 'Apply Leave', path: '/employee/leave', color: 'green' },
+    { icon: FileText, label: 'View Payslip', path: '/employee/payslips', color: 'purple' },
+    { icon: User, label: 'Update Profile', path: '/employee/profile', color: 'orange' },
   ];
 
   return (
@@ -89,7 +160,7 @@ export default function EmployeeDashboard() {
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-blue-100">Today's Date</p>
-                  <p className="text-xl font-semibold">Jan 26, 2025</p>
+                  <p className="text-xl font-semibold">{format(new Date(), 'MMM dd, yyyy')}</p>
                 </div>
               </div>
             </div>
@@ -167,6 +238,7 @@ export default function EmployeeDashboard() {
                     <Button
                       key={index}
                       variant="outline"
+                      onClick={() => router.push(action.path)}
                       className="h-24 flex flex-col items-center gap-2 hover:shadow-md transition-all duration-300"
                     >
                       <action.icon className="h-6 w-6" />
