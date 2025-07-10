@@ -24,6 +24,7 @@ import {
   Eye,
   MessageSquare
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
@@ -54,6 +55,7 @@ export default function AdminLeavePage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
+  const [error, setError] = useState<string | null>(null);
 
   // Holiday management state
   const [holidays, setHolidays] = useState<any[]>([]);
@@ -80,8 +82,7 @@ export default function AdminLeavePage() {
     totalRequests: 0,
     pending: 0,
     approved: 0,
-    rejected: 0,
-    avgProcessingTime: ''
+    rejected: 0
   });
 
   // Add new state for reports data
@@ -186,13 +187,18 @@ export default function AdminLeavePage() {
   const fetchLeavesAndEmployees = async () => {
     try {
       setLoadingLeaves(true);
+      setError(null);
       const [leavesRes, empRes] = await Promise.all([
         fetch(`${apiBase}/leaves/`),
         fetch(`${apiBase}/employees/`)
       ]);
 
-      const leaves: any[] = leavesRes.ok ? await leavesRes.json() : [];
-      const employees: any[] = empRes.ok ? await empRes.json() : [];
+      if (!leavesRes.ok || !empRes.ok) {
+        throw new Error('Failed to fetch data from server');
+      }
+
+      const leaves: any[] = await leavesRes.json();
+      const employees: any[] = await empRes.json();
 
       // Helper to map backend status to UI status
       const mapStatus = (s: string) => {
@@ -235,14 +241,21 @@ export default function AdminLeavePage() {
         totalRequests: total,
         pending,
         approved,
-        rejected,
-        avgProcessingTime: ''
+        rejected
       });
 
       // Leave types
       setLeaveTypes(Array.from(new Set(mapped.map(r => r.type))) as string[]);
     } catch (err) {
       console.error(err);
+      setError('Failed to load leave requests. Please try again later.');
+      setLeaveRequests([]);
+      setLeaveStats({
+        totalRequests: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0
+      });
     } finally {
       setLoadingLeaves(false);
     }
@@ -417,6 +430,34 @@ export default function AdminLeavePage() {
     return isValid(d)? format(d,'dd MMM yyyy') : dateStr;
   };
 
+  const handleExport = () => {
+    // Prepare data for export
+    const exportData = filteredRequests.map(request => ({
+      'Employee Name': request.employee,
+      'Department': request.department,
+      'Leave Type': request.type,
+      'From Date': format(new Date(request.fromDate), 'MMM dd, yyyy'),
+      'To Date': format(new Date(request.toDate), 'MMM dd, yyyy'),
+      'Days': request.days,
+      'Status': request.status.charAt(0).toUpperCase() + request.status.slice(1),
+      'Applied On': format(new Date(request.appliedOn), 'MMM dd, yyyy'),
+      'Reason': request.reason
+    }));
+
+    // Create worksheet
+    const ws = XLSX.utils.json_to_sheet(exportData);
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Leave Requests');
+
+    // Generate file name with current date
+    const fileName = `Leave_Requests_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+
+    // Save file
+    XLSX.writeFile(wb, fileName);
+  };
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar isAdmin={true} />
@@ -507,7 +548,7 @@ export default function AdminLeavePage() {
                           Review and manage employee leave applications
                         </CardDescription>
                       </div>
-                      <Button>
+                      <Button onClick={handleExport}>
                         <Download className="h-4 w-4 mr-2" />
                         Export
                       </Button>
@@ -560,103 +601,121 @@ export default function AdminLeavePage() {
                       </div>
                     </div>
 
-                    {/* Requests List */}
-                    <div className="space-y-4">
-                      {filteredRequests.map((request) => (
-                        <div key={request.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow duration-200">
-                          <div className="flex items-start justify-between">
-                            <div className="space-y-2 flex-1">
-                              <div className="flex items-center gap-2">
-                                <h4 className="font-medium text-lg">{request.employee}</h4>
-                                <Badge className={getStatusColor(request.status)}>
-                                  <div className="flex items-center gap-1">
-                                    {getStatusIcon(request.status)}
-                                    {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                    {/* Loading State */}
+                    {loadingLeaves && (
+                      <div className="text-center py-8">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                        <p className="text-gray-500">Loading leave requests...</p>
+                      </div>
+                    )}
+
+                    {/* Error State */}
+                    {error && (
+                      <div className="text-center py-8">
+                        <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+                        <p className="text-red-500">{error}</p>
+                      </div>
+                    )}
+
+                    {/* Requests List - Only show when not loading and no error */}
+                    {!loadingLeaves && !error && (
+                      <div className="space-y-4">
+                        {filteredRequests.map((request) => (
+                          <div key={request.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow duration-200">
+                            <div className="flex items-start justify-between">
+                              <div className="space-y-2 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-medium text-lg">{request.employee}</h4>
+                                  <Badge className={getStatusColor(request.status)}>
+                                    <div className="flex items-center gap-1">
+                                      {getStatusIcon(request.status)}
+                                      {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                                    </div>
+                                  </Badge>
+                                  <Badge variant="outline">{request.department}</Badge>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                                  <div>
+                                    <span className="font-medium text-gray-600">Type: </span>
+                                    {request.type}
                                   </div>
-                                </Badge>
-                                <Badge variant="outline">{request.department}</Badge>
-                              </div>
-                              
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                                <div>
-                                  <span className="font-medium text-gray-600">Type: </span>
-                                  {request.type}
+                                  <div>
+                                    <span className="font-medium text-gray-600">Duration: </span>
+                                    {format(new Date(request.fromDate), 'MMM dd')} - {format(new Date(request.toDate), 'MMM dd')}
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Days: </span>
+                                    {request.days}
+                                  </div>
+                                  {/* Balance data not available from backend; removed */}
                                 </div>
-                                <div>
-                                  <span className="font-medium text-gray-600">Duration: </span>
-                                  {format(new Date(request.fromDate), 'MMM dd')} - {format(new Date(request.toDate), 'MMM dd')}
+                                
+                                <div className="text-sm text-gray-600">
+                                  <span className="font-medium">Reason: </span>
+                                  {request.reason}
                                 </div>
-                                <div>
-                                  <span className="font-medium text-gray-600">Days: </span>
-                                  {request.days}
+                                
+                                <div className="text-xs text-gray-500">
+                                  Applied on {format(new Date(request.appliedOn), 'MMM dd, yyyy')}
+                                  {request.approvedBy && (
+                                    <span className="text-green-600"> • Approved by {request.approvedBy}</span>
+                                  )}
+                                  {request.rejectedBy && (
+                                    <span className="text-red-600"> • Rejected by {request.rejectedBy}</span>
+                                  )}
                                 </div>
-                                {/* Balance data not available from backend; removed */}
-                              </div>
-                              
-                              <div className="text-sm text-gray-600">
-                                <span className="font-medium">Reason: </span>
-                                {request.reason}
-                              </div>
-                              
-                              <div className="text-xs text-gray-500">
-                                Applied on {format(new Date(request.appliedOn), 'MMM dd, yyyy')}
-                                {request.approvedBy && (
-                                  <span className="text-green-600"> • Approved by {request.approvedBy}</span>
+                                
+                                {request.rejectionReason && (
+                                  <div className="p-2 bg-red-50 rounded border-l-4 border-red-200">
+                                    <p className="text-sm text-red-800">
+                                      <strong>Rejection Reason:</strong> {request.rejectionReason}
+                                    </p>
+                                  </div>
                                 )}
-                                {request.rejectedBy && (
-                                  <span className="text-red-600"> • Rejected by {request.rejectedBy}</span>
-                                )}
                               </div>
                               
-                              {request.rejectionReason && (
-                                <div className="p-2 bg-red-50 rounded border-l-4 border-red-200">
-                                  <p className="text-sm text-red-800">
-                                    <strong>Rejection Reason:</strong> {request.rejectionReason}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                            
-                            <div className="flex flex-col gap-2 ml-4">
-                              <Button size="sm" variant="outline">
-                                <Eye className="h-4 w-4 mr-1" />
-                                View
-                              </Button>
-                              {request.status === 'pending' && (
-                                <>
-                                  <Button 
-                                    size="sm" 
-                                    className="bg-green-600 hover:bg-green-700"
-                                    onClick={() => handleApprove(request)}
-                                  >
-                                    <CheckCircle className="h-4 w-4 mr-1" />
-                                    Approve
-                                  </Button>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    onClick={() => handleReject(request)}
-                                  >
-                                    <XCircle className="h-4 w-4 mr-1" />
-                                    Reject
-                                  </Button>
-                                </>
-                              )}
-                              <Button size="sm" variant="outline">
-                                <MessageSquare className="h-4 w-4 mr-1" />
-                                Comment
-                              </Button>
+                              <div className="flex flex-col gap-2 ml-4">
+                                {request.status === 'pending' && (
+                                  <>
+                                    <Button 
+                                      size="sm" 
+                                      className="bg-green-600 hover:bg-green-700"
+                                      onClick={() => handleApprove(request)}
+                                    >
+                                      <CheckCircle className="h-4 w-4 mr-1" />
+                                      Approve
+                                    </Button>
+                                    <Button 
+                                      size="sm" 
+                                      variant="outline" 
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      onClick={() => handleReject(request)}
+                                    >
+                                      <XCircle className="h-4 w-4 mr-1" />
+                                      Reject
+                                    </Button>
+                                    <Button size="sm" variant="outline">
+                                      <Eye className="h-4 w-4 mr-1" />
+                                      View
+                                    </Button>
+                                <Button size="sm" variant="outline">
+                                  <MessageSquare className="h-4 w-4 mr-1" />
+                                  Comment
+                                </Button>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
 
-                    {filteredRequests.length === 0 && (
-                      <div className="text-center py-8">
-                        <CalendarIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-gray-500">No leave requests found matching your criteria</p>
+                        {filteredRequests.length === 0 && (
+                          <div className="text-center py-8">
+                            <CalendarIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                            <p className="text-gray-500">No leave requests found matching your criteria</p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </CardContent>
@@ -769,11 +828,11 @@ export default function AdminLeavePage() {
                       <div className="space-y-3">
                         {reportStats.departmentBreakdown.map((dept, idx) => (
                           <div key={idx}>
-                            <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center">
                               <span className="text-sm">{dept.department}</span>
                               <span className="text-sm font-medium">{dept.percentage}%</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
                               <div 
                                 className={`h-2 rounded-full ${
                                   idx === 0 ? 'bg-blue-600' :
@@ -783,13 +842,13 @@ export default function AdminLeavePage() {
                                 }`} 
                                 style={{ width: `${dept.percentage}%` }} 
                               />
-                            </div>
-                          </div>
+                        </div>
+                        </div>
                         ))}
                         {reportStats.departmentBreakdown.length === 0 && (
                           <div className="text-center py-4 text-gray-500">
                             No department data available
-                          </div>
+                        </div>
                         )}
                       </div>
                     </CardContent>

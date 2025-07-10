@@ -19,22 +19,19 @@ import {
   Download,
   Upload,
   Eye,
-  Edit,
-  Trash2,
-  Plus,
   Clock,
   CheckCircle,
   XCircle,
-  Users
+  AlertCircle
 } from 'lucide-react';
 
 export default function AdminDocumentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedRequestRow, setSelectedRequestRow] = useState<number|null>(null);
   const fileInputRef = useRef<HTMLInputElement|null>(null);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleUploadClick = (row:number) => {
     setSelectedRequestRow(row);
@@ -79,10 +76,6 @@ export default function AdminDocumentsPage() {
     email: 'admin@epicallayouts.com'
   };
 
-  // ------------------------------------------------------------------
-  // Dynamic Document Requests – fetched from backend `/documents/`
-  // ------------------------------------------------------------------
-
   type DocReqBackend = {
     row: number;
     email: string;
@@ -93,8 +86,8 @@ export default function AdminDocumentsPage() {
   };
 
   type DocReqUI = {
-    id: number; // index for React key
-    row: number; // sheet row for backend operations
+    id: number;
+    row: number;
     employee: string;
     department: string;
     type: string;
@@ -112,21 +105,25 @@ export default function AdminDocumentsPage() {
     totalRequests: 0,
     pending: 0,
     completed: 0,
-    inProgress: 0,
-    avgProcessingTime: ''
+    inProgress: 0
   });
 
-  // Fetch requests + employee info
   const fetchData = async () => {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
     try {
+      setLoadingRequests(true);
+      setError(null);
       const [reqRes, empRes] = await Promise.all([
         fetch(`${apiBase}/documents/`),
         fetch(`${apiBase}/employees/`),
       ]);
 
-      const reqs: DocReqBackend[] = reqRes.ok ? await reqRes.json() : [];
-      const employees: any[] = empRes.ok ? await empRes.json() : [];
+      if (!reqRes.ok || !empRes.ok) {
+        throw new Error('Failed to fetch data from server');
+      }
+
+      const reqs: DocReqBackend[] = await reqRes.json();
+      const employees: any[] = await empRes.json();
 
       const mapped: DocReqUI[] = reqs.map((r, idx) => {
         const emp = employees.find((e) => e.email.toLowerCase() === r.email.toLowerCase());
@@ -154,60 +151,26 @@ export default function AdminDocumentsPage() {
         totalRequests: total,
         pending,
         completed,
-        inProgress,
-        avgProcessingTime: '',
+        inProgress
       });
     } catch (err) {
       console.error(err);
+      setError('Failed to load document requests. Please try again later.');
+      setDocumentRequests([]);
+      setDocumentStats({
+        totalRequests: 0,
+        pending: 0,
+        completed: 0,
+        inProgress: 0
+      });
     } finally {
       setLoadingRequests(false);
     }
   };
 
-  // initial load
   useEffect(() => {
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const companyDocuments = [
-    {
-      id: 1,
-      name: 'Employee Handbook 2025.pdf',
-      category: 'Policy',
-      uploadDate: '2025-01-01',
-      size: '2.4 MB',
-      access: 'all_employees',
-      downloads: 45
-    },
-    {
-      id: 2,
-      name: 'Leave Policy.pdf',
-      category: 'Policy',
-      uploadDate: '2024-12-15',
-      size: '1.2 MB',
-      access: 'all_employees',
-      downloads: 32
-    },
-    {
-      id: 3,
-      name: 'Code of Conduct.pdf',
-      category: 'Policy',
-      uploadDate: '2024-11-20',
-      size: '856 KB',
-      access: 'all_employees',
-      downloads: 28
-    },
-    {
-      id: 4,
-      name: 'IT Security Guidelines.pdf',
-      category: 'Guidelines',
-      uploadDate: '2024-10-10',
-      size: '1.8 MB',
-      access: 'all_employees',
-      downloads: 19
-    }
-  ];
 
   const filteredRequests = documentRequests.filter(request => {
     const matchesSearch = request.employee.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -215,14 +178,6 @@ export default function AdminDocumentsPage() {
     const matchesStatus = selectedStatus === 'all' || request.status === selectedStatus;
     
     return matchesSearch && matchesStatus;
-  });
-
-  const filteredDocuments = companyDocuments.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         doc.category.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || doc.category === selectedCategory;
-    
-    return matchesSearch && matchesCategory;
   });
 
   const getStatusColor = (status: string) => {
@@ -253,7 +208,7 @@ export default function AdminDocumentsPage() {
         <main className="flex-1 overflow-auto p-6 custom-scrollbar">
           <div className="max-w-7xl mx-auto space-y-6">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card className="hover:shadow-lg transition-shadow duration-300">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -309,22 +264,12 @@ export default function AdminDocumentsPage() {
                   </div>
                 </CardContent>
               </Card>
-
-              <Card className="hover:shadow-lg transition-shadow duration-300">
-                <CardContent className="p-6">
-                  <div className="text-center">
-                    <p className="text-sm font-medium text-gray-600">Avg. Processing</p>
-                    <p className="text-2xl font-bold text-purple-600">{documentStats.avgProcessingTime}</p>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
 
             <Tabs defaultValue="requests" className="space-y-6">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="requests">Document Requests</TabsTrigger>
                 <TabsTrigger value="library">Document Library</TabsTrigger>
-                <TabsTrigger value="templates">Templates</TabsTrigger>
               </TabsList>
 
               {/* Document Requests */}
@@ -380,77 +325,99 @@ export default function AdminDocumentsPage() {
                       </div>
                     </div>
 
+                    {/* Loading State */}
+                    {loadingRequests && (
+                      <div className="text-center py-8">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                        <p className="text-gray-500">Loading document requests...</p>
+                      </div>
+                    )}
+
+                    {/* Error State */}
+                    {error && (
+                      <div className="text-center py-8">
+                        <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+                        <p className="text-red-500">{error}</p>
+                      </div>
+                    )}
+
                     {/* Requests List */}
-                    <div className="space-y-4">
-                      {filteredRequests.map((request) => (
-                        <div key={request.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow duration-200">
-                          <div className="flex items-start justify-between">
-                            <div className="space-y-2 flex-1">
-                              <div className="flex items-center gap-2">
-                                <h4 className="font-medium text-lg">{request.employee}</h4>
-                                <Badge className={getStatusColor(request.status)}>
-                                  <div className="flex items-center gap-1">
-                                    {getStatusIcon(request.status)}
-                                    {request.status.replace('_', ' ').charAt(0).toUpperCase() + request.status.replace('_', ' ').slice(1)}
+                    {!loadingRequests && !error && (
+                      <div className="space-y-4">
+                        {filteredRequests.map((request) => (
+                          <div key={request.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow duration-200">
+                            <div className="flex items-start justify-between">
+                              <div className="space-y-2 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-medium text-lg">{request.employee}</h4>
+                                  <Badge className={getStatusColor(request.status)}>
+                                    <div className="flex items-center gap-1">
+                                      {getStatusIcon(request.status)}
+                                      {request.status.replace('_', ' ').charAt(0).toUpperCase() + request.status.replace('_', ' ').slice(1)}
+                                    </div>
+                                  </Badge>
+                                  <Badge variant="outline">{request.department}</Badge>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                  <div>
+                                    <span className="font-medium text-gray-600">Document: </span>
+                                    {request.type}
                                   </div>
-                                </Badge>
-                                <Badge variant="outline">{request.department}</Badge>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Purpose: </span>
+                                    {request.purpose}
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-600">Requested: </span>
+                                    {request.requestDate}
+                                  </div>
+                                </div>
+                                
+                                {request.expectedDate && (
+                                  <div className="text-xs text-blue-600">
+                                    Expected completion: {request.expectedDate}
+                                  </div>
+                                )}
+                                
+                                {request.completedDate && (
+                                  <div className="text-xs text-green-600">
+                                    Completed on: {request.completedDate}
+                                  </div>
+                                )}
                               </div>
                               
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                                <div>
-                                  <span className="font-medium text-gray-600">Document: </span>
-                                  {request.type}
-                                </div>
-                                <div>
-                                  <span className="font-medium text-gray-600">Purpose: </span>
-                                  {request.purpose}
-                                </div>
-                                <div>
-                                  <span className="font-medium text-gray-600">Requested: </span>
-                                  {request.requestDate}
-                                </div>
+                              <div className="flex flex-col gap-2 ml-4">
+                                {request.status !== 'completed' && (
+                                  <>
+                                    <Button size="sm" variant="outline">
+                                      <Eye className="h-4 w-4 mr-1" />
+                                      View
+                                    </Button>
+                                    {(request.status === 'pending' || request.status === 'in_progress') && (
+                                      <Button 
+                                        size="sm" 
+                                        className="bg-blue-600 hover:bg-blue-700" 
+                                        onClick={() => handleUploadClick(request.row)} 
+                                        disabled={uploading}
+                                      >
+                                        <Upload className="h-4 w-4 mr-1" />
+                                        Upload
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
                               </div>
-                              
-                              {request.expectedDate && (
-                                <div className="text-xs text-blue-600">
-                                  Expected completion: {request.expectedDate}
-                                </div>
-                              )}
-                              
-                              {request.completedDate && (
-                                <div className="text-xs text-green-600">
-                                  Completed on: {request.completedDate}
-                                </div>
-                              )}
-                            </div>
-                            
-                            <div className="flex flex-col gap-2 ml-4">
-                              <Button size="sm" variant="outline">
-                                <Eye className="h-4 w-4 mr-1" />
-                                View
-                              </Button>
-                              {(request.status==='pending' || request.status==='in_progress') && (
-                                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={()=>handleUploadClick(request.row)} disabled={uploading}>
-                                  Upload
-                                </Button>
-                              )}
-                              {request.status === 'completed' && (
-                                <Button size="sm" variant="outline">
-                                  <Download className="h-4 w-4 mr-1" />
-                                  Download
-                                </Button>
-                              )}
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
 
-                    {filteredRequests.length === 0 && (
-                      <div className="text-center py-8">
-                        <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-gray-500">No document requests found</p>
+                        {filteredRequests.length === 0 && (
+                          <div className="text-center py-8">
+                            <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                            <p className="text-gray-500">No document requests found</p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </CardContent>
@@ -471,109 +438,12 @@ export default function AdminDocumentsPage() {
                           Manage company policies and documents
                         </CardDescription>
                       </div>
-                      <Button className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Upload Document
-                      </Button>
                     </div>
                   </CardHeader>
                   <CardContent>
-                    {/* Filters */}
-                    <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                      <div className="flex-1">
-                        <Label htmlFor="search-docs">Search Documents</Label>
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                          <Input
-                            id="search-docs"
-                            placeholder="Search documents..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <Label htmlFor="category">Category</Label>
-                        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                          <SelectTrigger className="w-36">
-                            <Filter className="h-4 w-4 mr-2" />
-                            <SelectValue placeholder="All Categories" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Categories</SelectItem>
-                            <SelectItem value="Policy">Policy</SelectItem>
-                            <SelectItem value="Guidelines">Guidelines</SelectItem>
-                            <SelectItem value="Forms">Forms</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {/* Documents List */}
-                    <div className="space-y-4">
-                      {filteredDocuments.map((document) => (
-                        <div key={document.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow duration-200">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <div className="p-2 bg-blue-100 rounded-lg">
-                                <FileText className="h-6 w-6 text-blue-600" />
-                              </div>
-                              <div>
-                                <h4 className="font-medium">{document.name}</h4>
-                                <div className="flex items-center gap-4 text-sm text-gray-500">
-                                  <span>{document.category}</span>
-                                  <span>•</span>
-                                  <span>{document.size}</span>
-                                  <span>•</span>
-                                  <span>Uploaded: {document.uploadDate}</span>
-                                  <span>•</span>
-                                  <span>{document.downloads} downloads</span>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="bg-green-100 text-green-800">
-                                <Users className="h-3 w-3 mr-1" />
-                                {document.access.replace('_', ' ')}
-                              </Badge>
-                              <Button size="sm" variant="outline">
-                                <Eye className="h-4 w-4 mr-1" />
-                                View
-                              </Button>
-                              <Button size="sm" variant="outline">
-                                <Edit className="h-4 w-4 mr-1" />
-                                Edit
-                              </Button>
-                              <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700">
-                                <Trash2 className="h-4 w-4 mr-1" />
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Templates */}
-              <TabsContent value="templates" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <FileText className="h-5 w-5" />
-                      Document Templates
-                    </CardTitle>
-                    <CardDescription>
-                      Manage templates for commonly requested documents
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-center py-12">
-                      <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">Document templates coming soon</p>
+                    <div className="text-center py-8">
+                      <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-500">Document library feature coming soon</p>
                     </div>
                   </CardContent>
                 </Card>
