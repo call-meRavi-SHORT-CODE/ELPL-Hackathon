@@ -24,6 +24,8 @@ import {
   XCircle,
   AlertCircle
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { format } from 'date-fns';
 
 export default function AdminDocumentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -69,6 +71,33 @@ export default function AdminDocumentsPage() {
       e.target.value='';
       setUploading(false);
     }
+  };
+
+  const handleExport = () => {
+    // Prepare data for export
+    const exportData = filteredRequests.map(request => ({
+      'Employee Name': request.employee,
+      'Department': request.department,
+      'Document Type': request.type,
+      'Purpose': request.purpose,
+      'Requested Date': request.requestDate,
+      'Status': request.status.charAt(0).toUpperCase() + request.status.slice(1),
+      'Expected Date': request.expectedDate || 'N/A',
+      'Completed Date': request.completedDate || 'N/A'
+    }));
+
+    // Create worksheet
+    const ws = XLSX.utils.json_to_sheet(exportData);
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Document Requests');
+
+    // Generate file name with current date
+    const fileName = `Document_Requests_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+
+    // Save file
+    XLSX.writeFile(wb, fileName);
   };
 
   const user = {
@@ -286,7 +315,7 @@ export default function AdminDocumentsPage() {
                           Manage employee document requests
                         </CardDescription>
                       </div>
-                      <Button>
+                      <Button onClick={handleExport} disabled={loadingRequests || filteredRequests.length === 0}>
                         <Download className="h-4 w-4 mr-2" />
                         Export
                       </Button>
