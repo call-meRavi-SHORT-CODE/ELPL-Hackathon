@@ -638,43 +638,107 @@ export default function TimesheetPage() {
                     </div>
 
                     {/* Time Slots */}
-                    <div className="space-y-1">
-                      {Array.from({ length: 10 }, (_, i) => i + 8).map((hour) => (
-                        <div key={hour} className="grid grid-cols-8 gap-4 min-h-16">
-                          <div className="text-xs text-gray-500 pt-1">
-                            {hour}:00
-                          </div>
-                          {weekDays.map((day) => {
+                    {/* Time Grid: 8:00 - 18:00, 30min slots, project blocks */}
+                    <div className="relative w-full bg-white rounded-lg shadow-sm border" style={{ minHeight: '420px', overflow: 'hidden' }}>
+                      <div className="flex flex-row w-full h-full">
+                        {/* Time labels column */}
+                        <div className="flex flex-col items-end pr-2 pt-2" style={{ width: '48px', minWidth: '48px' }}>
+                          {Array.from({ length: 11 }, (_, i) => 8 + i).map((hour) => (
+                            <div key={hour} className="h-9 flex items-start justify-end text-xs text-gray-400" style={{ height: '36px' }}>
+                              {`${hour.toString().padStart(2, '0')}:00`}
+                            </div>
+                          ))}
+                        </div>
+                        {/* Calendar grid */}
+                        <div className="grid grid-cols-7 gap-2 relative z-10 flex-1" style={{ minHeight: '420px' }}>
+                          {weekDays.map((day, colIdx) => {
                             const dayData = getDayData(day);
-                            const hourEntries = dayData.entries.filter(entry => {
-                              const startHour = parseInt(entry.startTime.split(':')[0]);
-                              const endHour = entry.endTime ? parseInt(entry.endTime.split(':')[0]) : startHour;
-                              return hour >= startHour && hour <= endHour;
-                            });
-
                             return (
-                              <div 
-                                key={`${format(day, 'yyyy-MM-dd')}-${hour}`} 
-                                className={`border rounded p-1 min-h-14 cursor-pointer hover:bg-gray-50 ${
-                                  isSameDay(day, selectedDate) ? 'ring-2 ring-blue-300' : ''
-                                }`}
-                                onClick={() => setSelectedDate(day)}
-                              >
-                                {hourEntries.map((entry) => (
-                                  <div
-                                    key={entry.id}
-                                    className="text-xs p-1 rounded mb-1 text-white font-medium"
-                                    style={{ backgroundColor: getProjectColor(entry.project) }}
-                                  >
-                                    <div className="truncate">{entry.project}</div>
-                                    <div className="truncate opacity-90">{entry.task}</div>
-                                  </div>
-                                ))}
+                              <div key={format(day, 'yyyy-MM-dd')} className="relative h-full" style={{ minHeight: '420px' }}>
+                                {/* Project entries as absolute blocks */}
+                                {dayData.entries.map((entry) => {
+                                  let [sh, sm] = entry.startTime ? entry.startTime.split(':').map(Number) : [8, 0];
+                                  let [eh, em] = entry.endTime ? entry.endTime.split(':').map(Number) : [sh, sm + 30];
+                                  if (em >= 60) { eh += Math.floor(em / 60); em = em % 60; }
+                                  const startMin = (sh * 60 + sm) - 8 * 60;
+                                  const endMin = (eh * 60 + em) - 8 * 60;
+                                  const top = Math.max(0, (startMin / 600) * 100);
+                                  const height = Math.max(8, ((endMin - startMin) / 600) * 100);
+                                  return (
+                                    <div
+                                      key={entry.id}
+                                      className={`absolute left-1 right-1 rounded shadow-md text-xs text-white px-2 py-1 cursor-pointer ${isSameDay(day, selectedDate) ? 'ring-2 ring-blue-400' : ''}`}
+                                      style={{
+                                        backgroundColor: getProjectColor(entry.project),
+                                        top: `${top}%`,
+                                        height: `${height}%`,
+                                        zIndex: 2,
+                                        minHeight: '28px',
+                                        opacity: isSameDay(day, selectedDate) ? 1 : 0.85,
+                                      }}
+                                      onClick={() => {
+                                        setSelectedDate(day);
+                                        setEditingEntry(entry.id);
+                                      }}
+                                    >
+                                      <div className="font-semibold truncate">{entry.project}</div>
+                                      <div className="truncate opacity-90">{entry.task}</div>
+                                      <div className="text-[11px] mt-1 font-mono bg-white/80 text-gray-800 px-1 py-0.5 rounded shadow-sm w-fit">
+                                        {entry.startTime && entry.endTime ? `${entry.startTime} - ${entry.endTime}` : ''}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             );
                           })}
                         </div>
-                      ))}
+                      </div>
+                      {/* Edit Entry Modal */}
+                      {editingEntry && (() => {
+                        const entry = timeEntries.find(e => e.id === editingEntry);
+                        if (!entry) return null;
+                        return (
+                          <Card className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold">Edit Time Entry</h3>
+                                <Button variant="ghost" size="sm" onClick={() => setEditingEntry(null)}>
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                              <div className="space-y-4">
+                                <div>
+                                  <Label>Project</Label>
+                                  <Input type="text" value={entry.project} readOnly className="bg-gray-100" />
+                                </div>
+                                <div>
+                                  <Label>Task</Label>
+                                  <Input type="text" value={entry.task} readOnly className="bg-gray-100" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <Label>Start Time</Label>
+                                    <Input type="time" value={entry.startTime} readOnly className="bg-gray-100" />
+                                  </div>
+                                  <div>
+                                    <Label>End Time</Label>
+                                    <Input type="time" value={entry.endTime} readOnly className="bg-gray-100" />
+                                  </div>
+                                </div>
+                                <div className="flex gap-2 pt-4">
+                                  <Button variant="destructive" onClick={() => { deleteEntry(entry.id); setEditingEntry(null); }} className="flex-1">
+                                    <Trash2 className="h-4 w-4 mr-2" /> Delete Entry
+                                  </Button>
+                                  <Button variant="outline" onClick={() => setEditingEntry(null)} className="flex-1">
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </Card>
+                        );
+                      })()}
                     </div>
 
                     {/* Week Summary */}
@@ -737,7 +801,6 @@ export default function TimesheetPage() {
                                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                               )}
                             </div>
-                            
                             {dayData.totalTime > 0 && (
                               <div className="space-y-1">
                                 <div className="text-xs font-semibold text-green-600">
@@ -750,7 +813,6 @@ export default function TimesheetPage() {
                                 )}
                               </div>
                             )}
-                            
                             {dayData.entries.slice(0, 2).map((entry) => (
                               <div
                                 key={entry.id}
@@ -760,7 +822,6 @@ export default function TimesheetPage() {
                                 <div className="truncate">{entry.project}</div>
                               </div>
                             ))}
-                            
                             {dayData.entries.length > 2 && (
                               <div className="text-xs text-gray-500">
                                 +{dayData.entries.length - 2} more
@@ -772,8 +833,9 @@ export default function TimesheetPage() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+      
+    </CardContent>
+  </Card>
 
             {/* Selected Day Details */}
             <Card>
@@ -875,7 +937,11 @@ export default function TimesheetPage() {
                                   <p className="text-sm font-medium text-gray-700">{entry.task}</p>
                                   <p className="text-xs text-gray-500">{entry.description}</p>
                                   <div className="flex items-center gap-4 text-xs text-gray-400">
-                                    <span>{entry.startTime} - {entry.endTime || 'Running'}</span>
+                                    {entry.startTime && entry.endTime ? (
+                                      <span className="font-semibold text-blue-600">{entry.startTime} - {entry.endTime}</span>
+                                    ) : (
+                                      <span>{entry.startTime || ''}{entry.endTime ? ` - ${entry.endTime}` : ''}</span>
+                                    )}
                                     {entry.breakTime && entry.breakTime > 0 && (
                                       <span className="flex items-center gap-1">
                                         <Coffee className="h-3 w-3" />
@@ -885,8 +951,11 @@ export default function TimesheetPage() {
                                   </div>
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <p className="font-semibold text-lg">{formatDuration(entry.duration)}</p>
+                              <div className="text-right min-w-[90px] flex flex-col items-end justify-between h-full">
+                                {/* Show only time range, not duration */}
+                                {entry.startTime && entry.endTime && (
+                                  <span className="font-semibold text-blue-600 text-base font-mono bg-gray-100 px-2 py-0.5 rounded shadow-sm">{entry.startTime} - {entry.endTime}</span>
+                                )}
                                 <div className="flex gap-1 mt-2">
                                   <Button size="sm" variant="outline">
                                     <Edit className="h-3 w-3" />

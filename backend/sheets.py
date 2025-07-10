@@ -55,7 +55,7 @@ import logging
 from datetime import date
 from auth import get_credentials
 from googleapiclient.discovery import build
-from config import SPREADSHEET_ID, SHEET_NAME
+from config import SPREADSHEET_ID, SHEET_NAME, TIMESHEET_SHEET_NAME
 import re
 
 logging.basicConfig(level=logging.INFO)
@@ -274,7 +274,6 @@ from config import PUBLIC_HOLIDAYS_SHEET_NAME
 from config import LEAVE_APPROVAL_SHEET_NAME
 from config import DOCUMENTS_SHEET_NAME
 # Timesheet sheet constant
-from config import TIMESHEET_SHEET_NAME
 
 
 def find_holiday(name: str, date_str: str) -> bool:
