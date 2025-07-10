@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { 
-  Calendar, 
+  Calendar as CalendarIcon, 
   Search,
   Filter,
   CheckCircle,
@@ -24,6 +24,7 @@ import {
   Eye,
   MessageSquare
 } from 'lucide-react';
+import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogTrigger,
@@ -82,6 +83,15 @@ export default function AdminLeavePage() {
     rejected: 0,
     avgProcessingTime: ''
   });
+
+  // Add new state for reports data
+  const [reportStats, setReportStats] = useState({
+    mostRequested: '',
+    approvalRate: 0,
+    peakMonth: '',
+    departmentBreakdown: [] as { department: string; percentage: number }[]
+  });
+
   const [leaveTypes, setLeaveTypes] = useState<string[]>([]);
 
   const filteredRequests = leaveRequests.filter(request => {
@@ -238,10 +248,40 @@ export default function AdminLeavePage() {
     }
   };
 
-  // initial load
+  // Add function to fetch report statistics
+  const fetchReportStats = async () => {
+    try {
+      const [statsRes, deptRes] = await Promise.all([
+        fetch(`${apiBase}/leaves/statistics`),
+        fetch(`${apiBase}/leaves/department-breakdown`)
+      ]);
+
+      if (statsRes.ok && deptRes.ok) {
+        const stats = await statsRes.json();
+        const departments = await deptRes.json();
+        
+        setReportStats({
+          mostRequested: stats.most_requested || 'N/A',
+          approvalRate: stats.approval_rate || 0,
+          peakMonth: stats.peak_month || 'N/A',
+          departmentBreakdown: departments || []
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch report statistics:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to load report statistics',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Add fetchReportStats to initial load useEffect
   useEffect(() => {
     fetchHolidays();
     fetchLeavesAndEmployees();
+    fetchReportStats(); // Add this line
   }, []);
 
   const openAddHoliday = () => {
@@ -252,20 +292,10 @@ export default function AdminLeavePage() {
   };
 
   const openEditHoliday = (h: any) => {
-    // Convert dd-mm-yyyy to yyyy-mm-dd for <input type="date">
-    const toIso = (ddmmyyyy: string) => {
-      const parts = ddmmyyyy.split('-');
-      if (parts.length === 3) {
-        const [dd, mm, yy] = parts;
-        return `${yy}-${mm}-${dd}`;
-      }
-      return ddmmyyyy; // fallback
-    };
-
     setHolidayDialogMode('edit');
     setHolidayForm({
       name: h.name,
-      date: toIso(h.date), // ISO for input
+      date: h.date, // Keep the dd-mm-yyyy format
       type: h.type,
       description: h.description || '',
       recurring: h.recurring,
@@ -280,25 +310,85 @@ export default function AdminLeavePage() {
   };
 
   const saveHoliday = async () => {
-    const pending = toast({title: holidayDialogMode==='add'?'Adding holiday…':'Saving holiday…', duration:60000});
+    // Front-end required-fields validation
+    if (!holidayForm.name.trim() || !holidayForm.date) {
+      toast({
+        title: 'Validation error',
+        description: 'Name and date are required',
+        variant: 'destructive',
+        duration: 3000,
+      });
+      return;
+    }
+
+    const pending = toast({
+      title: holidayDialogMode === 'add' ? 'Adding holiday…' : 'Saving holiday…',
+      duration: 60000,
+    });
     try {
-      let ok=false;
-      if(holidayDialogMode==='add'){
-        const res= await fetch(`${apiBase}/holidays/`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(holidayForm)});
-        ok=res.ok;
-      }else if(editingHoliday){
-        const res= await fetch(`${apiBase}/holidays/${encodeURIComponent(editingHoliday.name)}/${encodeURIComponent(editingHoliday.date)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(holidayForm)});
-        ok=res.ok;
+      let res: Response;
+      if (holidayDialogMode === 'add') {
+        res = await fetch(`${apiBase}/holidays/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(holidayForm),
+        });
+      } else if (editingHoliday) {
+        // For edit, omit the date field since it's already in the URL
+        const { date, ...formWithoutDate } = holidayForm;
+        res = await fetch(
+          `${apiBase}/holidays/${encodeURIComponent(editingHoliday.name)}/${encodeURIComponent(editingHoliday.date)}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formWithoutDate),
+          },
+        );
+      } else {
+        throw new Error('Invalid dialog mode');
       }
-      if(!ok) throw new Error('save failed');
+
+      if (!res.ok) {
+        // Robust extraction of human-readable error text
+        let detail = '';
+        try {
+          const data = await res.json();
+          if (typeof data === 'string') {
+            detail = data;
+          } else if (typeof data?.detail === 'string') {
+            detail = data.detail;
+          } else if (Array.isArray(data?.detail)) {
+            // FastAPI validation errors – join each loc+msg
+            detail = data.detail.map((d:any)=>d?.msg || JSON.stringify(d)).join('; ');
+          } else if (typeof data?.message === 'string') {
+            detail = data.message;
+          } else {
+            detail = JSON.stringify(data);
+          }
+        } catch (_) {
+          // Fall back to plain text if not JSON
+          try {
+            detail = await res.text();
+          } catch {
+            detail = '';
+          }
+        }
+        throw new Error(detail || `${res.status} ${res.statusText}`);
+      }
+
       await fetchHolidays();
       pending.dismiss();
-      toast({title:'Holiday saved',variant:'success',duration:3000});
+      toast({ title: 'Holiday saved', variant: 'success', duration: 3000 });
       setHolidayDialogOpen(false);
-    }catch(err){
+    } catch (err: any) {
       console.error(err);
       pending.dismiss();
-      toast({title:'Error',description:'Failed to save holiday',variant:'destructive',duration:3000});
+      toast({
+        title: 'Error',
+        description: err.message || 'Failed to save holiday',
+        variant: 'destructive',
+        duration: 3000,
+      });
     }
   };
 
@@ -337,7 +427,7 @@ export default function AdminLeavePage() {
         <main className="flex-1 overflow-auto p-6 custom-scrollbar">
           <div className="max-w-7xl mx-auto space-y-6">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card className="hover:shadow-lg transition-shadow duration-300">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -346,7 +436,7 @@ export default function AdminLeavePage() {
                       <p className="text-3xl font-bold text-blue-600">{leaveStats.totalRequests}</p>
                     </div>
                     <div className="p-3 bg-blue-100 rounded-full">
-                      <Calendar className="h-6 w-6 text-blue-600" />
+                      <CalendarIcon className="h-6 w-6 text-blue-600" />
                     </div>
                   </div>
                 </CardContent>
@@ -393,15 +483,6 @@ export default function AdminLeavePage() {
                   </div>
                 </CardContent>
               </Card>
-
-              <Card className="hover:shadow-lg transition-shadow duration-300">
-                <CardContent className="p-6">
-                  <div className="text-center">
-                    <p className="text-sm font-medium text-gray-600">Avg. Processing</p>
-                    <p className="text-2xl font-bold text-purple-600">{leaveStats.avgProcessingTime}</p>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
 
             <Tabs defaultValue="requests" className="space-y-6">
@@ -419,7 +500,7 @@ export default function AdminLeavePage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <CardTitle className="flex items-center gap-2">
-                          <Calendar className="h-5 w-5" />
+                          <CalendarIcon className="h-5 w-5" />
                           Leave Requests
                         </CardTitle>
                         <CardDescription>
@@ -574,7 +655,7 @@ export default function AdminLeavePage() {
 
                     {filteredRequests.length === 0 && (
                       <div className="text-center py-8">
-                        <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <CalendarIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                         <p className="text-gray-500">No leave requests found matching your criteria</p>
                       </div>
                     )}
@@ -592,9 +673,64 @@ export default function AdminLeavePage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-center py-12">
-                      <Calendar className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">Calendar view coming soon</p>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      <div className="lg:col-span-2">
+                        <Calendar
+                          mode="single"
+                          className="rounded-md border w-full"
+                          modifiers={{
+                            holiday: holidays.map(h => parse(h.date, 'dd-MM-yyyy', new Date())).filter(Boolean)
+                          }}
+                          modifiersClassNames={{
+                            holiday: "bg-blue-100 text-blue-900 font-medium hover:bg-blue-200"
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-4">
+                        <div className="bg-white p-4 rounded-lg border">
+                          <h4 className="font-semibold mb-3">Legend</h4>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-4 h-4 bg-blue-100 rounded"></div>
+                              <span className="text-sm">Public Holiday</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Upcoming Holidays */}
+                        <div className="bg-white p-4 rounded-lg border">
+                          <h4 className="font-semibold mb-3">Upcoming Holidays</h4>
+                          <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                            {holidays
+                              .filter(h => {
+                                const date = parse(h.date, 'dd-MM-yyyy', new Date());
+                                return date >= new Date();
+                              })
+                              .sort((a, b) => {
+                                const dateA = parse(a.date, 'dd-MM-yyyy', new Date());
+                                const dateB = parse(b.date, 'dd-MM-yyyy', new Date());
+                                return dateA.getTime() - dateB.getTime();
+                              })
+                              .map((holiday, idx) => {
+                                const date = parse(holiday.date, 'dd-MM-yyyy', new Date());
+                                return (
+                                  <div key={idx} className="flex justify-between items-center p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors">
+                                    <div>
+                                      <span className="text-sm font-medium">{holiday.name}</span>
+                                      <p className="text-xs text-gray-500">{holiday.type}</p>
+                                    </div>
+                                    <span className="text-sm text-gray-600">{format(date, 'MMM dd')}</span>
+                                  </div>
+                                );
+                              })}
+                            {holidays.length === 0 && (
+                              <div className="text-center py-3 text-gray-500 text-sm">
+                                No upcoming holidays
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -611,15 +747,15 @@ export default function AdminLeavePage() {
                       <div className="space-y-4">
                         <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
                           <span>Most Requested</span>
-                          <span className="font-semibold text-blue-600">Casual Leave</span>
+                          <span className="font-semibold text-blue-600">{reportStats.mostRequested}</span>
                         </div>
                         <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
                           <span>Approval Rate</span>
-                          <span className="font-semibold text-green-600">88%</span>
+                          <span className="font-semibold text-green-600">{reportStats.approvalRate}%</span>
                         </div>
                         <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
                           <span>Peak Month</span>
-                          <span className="font-semibold text-purple-600">December</span>
+                          <span className="font-semibold text-purple-600">{reportStats.peakMonth}</span>
                         </div>
                       </div>
                     </CardContent>
@@ -631,37 +767,30 @@ export default function AdminLeavePage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">Engineering</span>
-                          <span className="text-sm font-medium">45%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div className="bg-blue-600 h-2 rounded-full" style={{ width: '45%' }} />
-                        </div>
-                        
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">Design</span>
-                          <span className="text-sm font-medium">25%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div className="bg-green-600 h-2 rounded-full" style={{ width: '25%' }} />
-                        </div>
-                        
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">Marketing</span>
-                          <span className="text-sm font-medium">20%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div className="bg-purple-600 h-2 rounded-full" style={{ width: '20%' }} />
-                        </div>
-                        
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm">Others</span>
-                          <span className="text-sm font-medium">10%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div className="bg-orange-600 h-2 rounded-full" style={{ width: '10%' }} />
-                        </div>
+                        {reportStats.departmentBreakdown.map((dept, idx) => (
+                          <div key={idx}>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm">{dept.department}</span>
+                              <span className="text-sm font-medium">{dept.percentage}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div 
+                                className={`h-2 rounded-full ${
+                                  idx === 0 ? 'bg-blue-600' :
+                                  idx === 1 ? 'bg-green-600' :
+                                  idx === 2 ? 'bg-purple-600' :
+                                  'bg-orange-600'
+                                }`} 
+                                style={{ width: `${dept.percentage}%` }} 
+                              />
+                            </div>
+                          </div>
+                        ))}
+                        {reportStats.departmentBreakdown.length === 0 && (
+                          <div className="text-center py-4 text-gray-500">
+                            No department data available
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -673,7 +802,7 @@ export default function AdminLeavePage() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between">
                     <div>
-                      <CardTitle className="flex items-center gap-2"><Calendar className="h-5 w-5"/> Public Holidays</CardTitle>
+                      <CardTitle className="flex items-center gap-2"><CalendarIcon className="h-5 w-5"/> Public Holidays</CardTitle>
                       <CardDescription>Manage company holiday calendar</CardDescription>
                     </div>
                     <Button onClick={openAddHoliday} className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700">Add Holiday</Button>

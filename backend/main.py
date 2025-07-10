@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta
 from email_utils import send_leave_status_email
 from drive import _get_or_create_profile_folder, delete_drive_file
 from drive import upload_file_to_folder, _get_or_create_documents_folder
+from collections import Counter, defaultdict
 
 app = FastAPI()
 app.add_middleware(
@@ -351,6 +352,88 @@ async def decide_leave(employee: str, applied_date: str, payload: LeaveUpdate):
 
     return {"row": row, "status": payload.status.value}
 
+# ---------------------------------------------------------------------------
+# Leave Statistics endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/leaves/statistics")
+async def get_leave_statistics():
+    """Get overall leave statistics including most requested type, approval rate, and peak month."""
+    leaves = list_leaves()
+    
+    if not leaves:
+        return {
+            "most_requested": None,
+            "approval_rate": 0,
+            "peak_month": None
+        }
+
+    # Calculate most requested leave type
+    leave_types = [leave["leave_type"] for leave in leaves]
+    type_counter = Counter(leave_types)
+    most_requested = type_counter.most_common(1)[0][0] if type_counter else None
+
+    # Calculate approval rate
+    total_decided = sum(1 for leave in leaves if leave["status"].lower() in ["accepted", "denied"])
+    total_approved = sum(1 for leave in leaves if leave["status"].lower() == "accepted")
+    approval_rate = (total_approved / total_decided * 100) if total_decided > 0 else 0
+
+    # Calculate peak month
+    month_counter = Counter()
+    for leave in leaves:
+        try:
+            # Convert dd-mm-yyyy to datetime
+            from_date = datetime.strptime(leave["from_date"], "%d-%m-%Y")
+            month_counter[from_date.strftime("%B")] += 1
+        except (ValueError, KeyError):
+            continue
+    
+    peak_month = month_counter.most_common(1)[0][0] if month_counter else None
+
+    return {
+        "most_requested": most_requested,
+        "approval_rate": round(approval_rate, 1),
+        "peak_month": peak_month
+    }
+
+@app.get("/leaves/department-breakdown")
+async def get_department_breakdown():
+    """Get leave distribution by department."""
+    leaves = list_leaves()
+    employees = list_employees()
+    
+    if not leaves or not employees:
+        return []
+
+    # Create email to department mapping
+    email_to_dept = {emp["email"]: emp["department"] for emp in employees}
+    
+    # Count leaves by department
+    dept_counter = defaultdict(int)
+    total_leaves = 0
+    
+    for leave in leaves:
+        dept = email_to_dept.get(leave["employee"])
+        if dept:
+            dept_counter[dept] += 1
+            total_leaves += 1
+
+    # Calculate percentages
+    if total_leaves > 0:
+        breakdown = [
+            {
+                "department": dept,
+                "percentage": round((count / total_leaves) * 100, 1)
+            }
+            for dept, count in dept_counter.items()
+        ]
+    else:
+        breakdown = []
+
+    # Sort by percentage descending
+    breakdown.sort(key=lambda x: x["percentage"], reverse=True)
+    
+    return breakdown
 
 # ---------------------------------------------------------------------------
 # Document request endpoint
