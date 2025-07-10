@@ -619,101 +619,101 @@ export default function AdminLeavePage() {
 
                     {/* Requests List - Only show when not loading and no error */}
                     {!loadingLeaves && !error && (
-                      <div className="space-y-4">
-                        {filteredRequests.map((request) => (
-                          <div key={request.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow duration-200">
-                            <div className="flex items-start justify-between">
-                              <div className="space-y-2 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <h4 className="font-medium text-lg">{request.employee}</h4>
-                                  <Badge className={getStatusColor(request.status)}>
-                                    <div className="flex items-center gap-1">
-                                      {getStatusIcon(request.status)}
-                                      {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                                    </div>
-                                  </Badge>
-                                  <Badge variant="outline">{request.department}</Badge>
-                                </div>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                                  <div>
-                                    <span className="font-medium text-gray-600">Type: </span>
-                                    {request.type}
+                    <div className="space-y-4">
+                      {filteredRequests.map((request) => (
+                        <div key={request.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow duration-200">
+                          <div className="flex items-start justify-between">
+                            <div className="space-y-2 flex-1">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-medium text-lg">{request.employee}</h4>
+                                <Badge className={getStatusColor(request.status)}>
+                                  <div className="flex items-center gap-1">
+                                    {getStatusIcon(request.status)}
+                                    {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
                                   </div>
-                                  <div>
-                                    <span className="font-medium text-gray-600">Duration: </span>
-                                    {format(new Date(request.fromDate), 'MMM dd')} - {format(new Date(request.toDate), 'MMM dd')}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium text-gray-600">Days: </span>
-                                    {request.days}
-                                  </div>
-                                  {/* Balance data not available from backend; removed */}
+                                </Badge>
+                                <Badge variant="outline">{request.department}</Badge>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <span className="font-medium text-gray-600">Type: </span>
+                                  {request.type}
                                 </div>
-                                
-                                <div className="text-sm text-gray-600">
-                                  <span className="font-medium">Reason: </span>
-                                  {request.reason}
+                                <div>
+                                  <span className="font-medium text-gray-600">Duration: </span>
+                                  {format(new Date(request.fromDate), 'MMM dd')} - {format(new Date(request.toDate), 'MMM dd')}
                                 </div>
-                                
-                                <div className="text-xs text-gray-500">
-                                  Applied on {format(new Date(request.appliedOn), 'MMM dd, yyyy')}
-                                  {request.approvedBy && (
-                                    <span className="text-green-600"> • Approved by {request.approvedBy}</span>
-                                  )}
-                                  {request.rejectedBy && (
-                                    <span className="text-red-600"> • Rejected by {request.rejectedBy}</span>
-                                  )}
+                                <div>
+                                  <span className="font-medium text-gray-600">Days: </span>
+                                  {request.days}
                                 </div>
-                                
-                                {request.rejectionReason && (
-                                  <div className="p-2 bg-red-50 rounded border-l-4 border-red-200">
-                                    <p className="text-sm text-red-800">
-                                      <strong>Rejection Reason:</strong> {request.rejectionReason}
-                                    </p>
-                                  </div>
+                                {/* Balance data not available from backend; removed */}
+                              </div>
+                              
+                              <div className="text-sm text-gray-600">
+                                <span className="font-medium">Reason: </span>
+                                {request.reason}
+                              </div>
+                              
+                              <div className="text-xs text-gray-500">
+                                Applied on {format(new Date(request.appliedOn), 'MMM dd, yyyy')}
+                                {request.approvedBy && (
+                                  <span className="text-green-600"> • Approved by {request.approvedBy}</span>
+                                )}
+                                {request.rejectedBy && (
+                                  <span className="text-red-600"> • Rejected by {request.rejectedBy}</span>
                                 )}
                               </div>
                               
-                              <div className="flex flex-col gap-2 ml-4">
-                                {request.status === 'pending' && (
-                                  <>
-                                    <Button 
-                                      size="sm" 
-                                      className="bg-green-600 hover:bg-green-700"
-                                      onClick={() => handleApprove(request)}
-                                    >
-                                      <CheckCircle className="h-4 w-4 mr-1" />
-                                      Approve
-                                    </Button>
-                                    <Button 
-                                      size="sm" 
-                                      variant="outline" 
-                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                      onClick={() => handleReject(request)}
-                                    >
-                                      <XCircle className="h-4 w-4 mr-1" />
-                                      Reject
-                                    </Button>
+                              {request.rejectionReason && (
+                                <div className="p-2 bg-red-50 rounded border-l-4 border-red-200">
+                                  <p className="text-sm text-red-800">
+                                    <strong>Rejection Reason:</strong> {request.rejectionReason}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="flex flex-col gap-2 ml-4">
+                              {request.status === 'pending' && (
+                                <>
+                                  <Button 
+                                    size="sm" 
+                                    className="bg-green-600 hover:bg-green-700"
+                                    onClick={() => handleApprove(request)}
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-1" />
+                                    Approve
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => handleReject(request)}
+                                  >
+                                    <XCircle className="h-4 w-4 mr-1" />
+                                    Reject
+                                  </Button>
                                     <Button size="sm" variant="outline">
                                       <Eye className="h-4 w-4 mr-1" />
                                       View
                                     </Button>
-                                <Button size="sm" variant="outline">
-                                  <MessageSquare className="h-4 w-4 mr-1" />
-                                  Comment
-                                </Button>
+                              <Button size="sm" variant="outline">
+                                <MessageSquare className="h-4 w-4 mr-1" />
+                                Comment
+                              </Button>
                                   </>
                                 )}
-                              </div>
                             </div>
                           </div>
-                        ))}
+                        </div>
+                      ))}
 
-                        {filteredRequests.length === 0 && (
-                          <div className="text-center py-8">
+                    {filteredRequests.length === 0 && (
+                      <div className="text-center py-8">
                             <CalendarIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                            <p className="text-gray-500">No leave requests found matching your criteria</p>
+                        <p className="text-gray-500">No leave requests found matching your criteria</p>
                           </div>
                         )}
                       </div>

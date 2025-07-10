@@ -372,57 +372,57 @@ export default function AdminDocumentsPage() {
 
                     {/* Requests List */}
                     {!loadingRequests && !error && (
-                      <div className="space-y-4">
-                        {filteredRequests.map((request) => (
-                          <div key={request.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow duration-200">
-                            <div className="flex items-start justify-between">
-                              <div className="space-y-2 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <h4 className="font-medium text-lg">{request.employee}</h4>
-                                  <Badge className={getStatusColor(request.status)}>
-                                    <div className="flex items-center gap-1">
-                                      {getStatusIcon(request.status)}
-                                      {request.status.replace('_', ' ').charAt(0).toUpperCase() + request.status.replace('_', ' ').slice(1)}
-                                    </div>
-                                  </Badge>
-                                  <Badge variant="outline">{request.department}</Badge>
-                                </div>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                                  <div>
-                                    <span className="font-medium text-gray-600">Document: </span>
-                                    {request.type}
+                    <div className="space-y-4">
+                      {filteredRequests.map((request) => (
+                        <div key={request.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow duration-200">
+                          <div className="flex items-start justify-between">
+                            <div className="space-y-2 flex-1">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-medium text-lg">{request.employee}</h4>
+                                <Badge className={getStatusColor(request.status)}>
+                                  <div className="flex items-center gap-1">
+                                    {getStatusIcon(request.status)}
+                                    {request.status.replace('_', ' ').charAt(0).toUpperCase() + request.status.replace('_', ' ').slice(1)}
                                   </div>
-                                  <div>
-                                    <span className="font-medium text-gray-600">Purpose: </span>
-                                    {request.purpose}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium text-gray-600">Requested: </span>
-                                    {request.requestDate}
-                                  </div>
-                                </div>
-                                
-                                {request.expectedDate && (
-                                  <div className="text-xs text-blue-600">
-                                    Expected completion: {request.expectedDate}
-                                  </div>
-                                )}
-                                
-                                {request.completedDate && (
-                                  <div className="text-xs text-green-600">
-                                    Completed on: {request.completedDate}
-                                  </div>
-                                )}
+                                </Badge>
+                                <Badge variant="outline">{request.department}</Badge>
                               </div>
                               
-                              <div className="flex flex-col gap-2 ml-4">
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                <div>
+                                  <span className="font-medium text-gray-600">Document: </span>
+                                  {request.type}
+                                </div>
+                                <div>
+                                  <span className="font-medium text-gray-600">Purpose: </span>
+                                  {request.purpose}
+                                </div>
+                                <div>
+                                  <span className="font-medium text-gray-600">Requested: </span>
+                                  {request.requestDate}
+                                </div>
+                              </div>
+                              
+                              {request.expectedDate && (
+                                <div className="text-xs text-blue-600">
+                                  Expected completion: {request.expectedDate}
+                                </div>
+                              )}
+                              
+                              {request.completedDate && (
+                                <div className="text-xs text-green-600">
+                                  Completed on: {request.completedDate}
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="flex flex-col gap-2 ml-4">
                                 {request.status !== 'completed' && (
                                   <>
-                                    <Button size="sm" variant="outline">
-                                      <Eye className="h-4 w-4 mr-1" />
-                                      View
-                                    </Button>
+                              <Button size="sm" variant="outline">
+                                <Eye className="h-4 w-4 mr-1" />
+                                View
+                              </Button>
                                     {(request.status === 'pending' || request.status === 'in_progress') && (
                                       <Button 
                                         size="sm" 
@@ -431,20 +431,20 @@ export default function AdminDocumentsPage() {
                                         disabled={uploading}
                                       >
                                         <Upload className="h-4 w-4 mr-1" />
-                                        Upload
-                                      </Button>
-                                    )}
+                                  Upload
+                                </Button>
+                              )}
                                   </>
                                 )}
                               </div>
-                            </div>
                           </div>
-                        ))}
+                        </div>
+                      ))}
 
-                        {filteredRequests.length === 0 && (
-                          <div className="text-center py-8">
-                            <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                            <p className="text-gray-500">No document requests found</p>
+                    {filteredRequests.length === 0 && (
+                      <div className="text-center py-8">
+                        <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-500">No document requests found</p>
                           </div>
                         )}
                       </div>

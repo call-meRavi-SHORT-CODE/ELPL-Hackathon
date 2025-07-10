@@ -11,7 +11,6 @@ import {
   Clock, 
   Calendar, 
   FileText, 
-  Settings, 
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -47,7 +46,6 @@ export function Sidebar({ isAdmin = false }: SidebarProps) {
     { href: '/admin/leave', icon: Calendar, label: 'Leave Requests' },
     { href: '/admin/documents', icon: FileText, label: 'Documents' },
     { href: '/admin/reports', icon: BarChart3, label: 'Reports' },
-    { href: '/admin/settings', icon: Settings, label: 'Settings' },
   ];
 
   const navItems = isAdmin ? adminNavItems : employeeNavItems;
