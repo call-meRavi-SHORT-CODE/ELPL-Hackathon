@@ -131,6 +131,41 @@ def _get_or_create_profile_folder(base_folder_id: str) -> str:
     return new_id
 
 
+def _get_or_create_documents_folder(base_folder_id: str) -> str:
+    """Return id of 'Documents' subfolder, creating if absent."""
+    svc = _get_drive_service()
+    query = (
+        f"'{base_folder_id}' in parents and "
+        "mimeType = 'application/vnd.google-apps.folder' and "
+        "trashed = false and name = 'Documents'"
+    )
+    resp = svc.files().list(q=query, spaces="drive", fields="files(id, name)").execute()
+    files = resp.get("files", [])
+    if files:
+        return files[0]["id"]
+    create_resp = svc.files().create(
+        body={
+            "name": "Documents",
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [base_folder_id],
+        },
+        fields="id",
+    ).execute()
+    return create_resp["id"]
+
+
+def upload_file_to_folder(file: UploadFile, folder_id: str) -> str:
+    """Upload any file to a Drive folder and return file ID."""
+    svc = _get_drive_service()
+    media = MediaIoBaseUpload(file.file, mimetype=file.content_type)
+    resp = svc.files().create(
+        body={"name": file.filename, "parents": [folder_id]},
+        media_body=media,
+        fields="id",
+    ).execute()
+    return resp["id"]
+
+
 def delete_drive_file(file_id: str):
     """Delete a single file in Drive; ignore 404 errors."""
     svc = _get_drive_service()

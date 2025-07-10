@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
@@ -72,87 +73,16 @@ export default function AdminLeavePage() {
     email: 'admin@epicallayouts.com'
   };
 
-  const leaveRequests = [
-    {
-      id: 1,
-      employee: 'Ravikrishna J',
-      department: 'Engineering',
-      type: 'Casual Leave',
-      fromDate: '2025-02-15',
-      toDate: '2025-02-17',
-      days: 3,
-      reason: 'Family wedding',
-      status: 'pending',
-      appliedOn: '2025-01-20',
-      balance: 12
-    },
-    {
-      id: 2,
-      employee: 'Priya Sharma',
-      department: 'Design',
-      type: 'Sick Leave',
-      fromDate: '2025-01-28',
-      toDate: '2025-01-29',
-      days: 2,
-      reason: 'Fever and flu symptoms',
-      status: 'pending',
-      appliedOn: '2025-01-26',
-      balance: 8
-    },
-    {
-      id: 3,
-      employee: 'Arjun Patel',
-      department: 'Marketing',
-      type: 'Earned Leave',
-      fromDate: '2025-03-05',
-      toDate: '2025-03-12',
-      days: 8,
-      reason: 'Vacation with family',
-      status: 'approved',
-      appliedOn: '2025-01-15',
-      approvedBy: 'HR Manager',
-      balance: 15
-    },
-    {
-      id: 4,
-      employee: 'Kavita Reddy',
-      department: 'HR',
-      type: 'Maternity Leave',
-      fromDate: '2025-04-01',
-      toDate: '2025-09-30',
-      days: 180,
-      reason: 'Maternity leave',
-      status: 'approved',
-      appliedOn: '2025-01-10',
-      approvedBy: 'Director',
-      balance: 180
-    },
-    {
-      id: 5,
-      employee: 'Raj Kumar',
-      department: 'Sales',
-      type: 'Casual Leave',
-      fromDate: '2025-01-20',
-      toDate: '2025-01-22',
-      days: 3,
-      reason: 'Personal work',
-      status: 'rejected',
-      appliedOn: '2025-01-18',
-      rejectedBy: 'HR Manager',
-      rejectionReason: 'Insufficient leave balance',
-      balance: 2
-    }
-  ];
-
-  const leaveStats = {
-    totalRequests: 25,
-    pending: 8,
-    approved: 15,
-    rejected: 2,
-    avgProcessingTime: '2.5 days'
-  };
-
-  const leaveTypes = ['Casual Leave', 'Sick Leave', 'Earned Leave', 'Maternity Leave', 'Paternity Leave'];
+  const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
+  const [loadingLeaves, setLoadingLeaves] = useState(true);
+  const [leaveStats, setLeaveStats] = useState({
+    totalRequests: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    avgProcessingTime: ''
+  });
+  const [leaveTypes, setLeaveTypes] = useState<string[]>([]);
 
   const filteredRequests = leaveRequests.filter(request => {
     const matchesSearch = request.employee.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -181,12 +111,48 @@ export default function AdminLeavePage() {
     }
   };
 
-  const handleApprove = (requestId: number) => {
-    console.log('Approving request:', requestId);
+  const handleApprove = async (request: any) => {
+    const pendingToast = toast({ title: 'Approving…', duration: 60000 });
+    try {
+      const res = await fetch(
+        `${apiBase}/leaves/${encodeURIComponent(request.employeeEmail)}/${encodeURIComponent(request.appliedDateStr)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'Accepted' }),
+        },
+      );
+      if (!res.ok) throw new Error('Failed to approve');
+      await fetchLeavesAndEmployees();
+      pendingToast.dismiss();
+      toast({ title: 'Leave approved', variant: 'success' });
+    } catch (err) {
+      console.error(err);
+      pendingToast.dismiss();
+      toast({ title: 'Error', description: 'Failed to approve leave', variant: 'destructive' });
+    }
   };
 
-  const handleReject = (requestId: number) => {
-    console.log('Rejecting request:', requestId);
+  const handleReject = async (request: any) => {
+    const pendingToast = toast({ title: 'Rejecting…', duration: 60000 });
+    try {
+      const res = await fetch(
+        `${apiBase}/leaves/${encodeURIComponent(request.employeeEmail)}/${encodeURIComponent(request.appliedDateStr)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'Denied' }),
+        },
+      );
+      if (!res.ok) throw new Error('Failed to reject');
+      await fetchLeavesAndEmployees();
+      pendingToast.dismiss();
+      toast({ title: 'Leave rejected', variant: 'success' });
+    } catch (err) {
+      console.error(err);
+      pendingToast.dismiss();
+      toast({ title: 'Error', description: 'Failed to reject leave', variant: 'destructive' });
+    }
   };
 
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -204,9 +170,78 @@ export default function AdminLeavePage() {
     }
   };
 
+  // --------------------------------------------------------------------
+  // Fetch leaves + employees and compute stats
+  // --------------------------------------------------------------------
+  const fetchLeavesAndEmployees = async () => {
+    try {
+      setLoadingLeaves(true);
+      const [leavesRes, empRes] = await Promise.all([
+        fetch(`${apiBase}/leaves/`),
+        fetch(`${apiBase}/employees/`)
+      ]);
+
+      const leaves: any[] = leavesRes.ok ? await leavesRes.json() : [];
+      const employees: any[] = empRes.ok ? await empRes.json() : [];
+
+      // Helper to map backend status to UI status
+      const mapStatus = (s: string) => {
+        const val = s.toLowerCase();
+        if (val === 'accepted') return 'approved';
+        if (val === 'denied') return 'rejected';
+        return 'pending';
+      };
+
+      // Transform for UI consumption
+      const mapped = leaves.map((lv, idx) => {
+        const emp = employees.find((e: any) => e.email.toLowerCase() === lv.employee.toLowerCase());
+        const fromDt = parse(lv.from_date, 'dd-MM-yyyy', new Date());
+        const toDt = parse(lv.to_date, 'dd-MM-yyyy', new Date());
+        const appliedDt = parse(lv.applied_date, 'dd-MM-yyyy', new Date());
+        return {
+          id: idx + 1,
+          employee: emp ? emp.name : lv.employee,
+          department: emp ? emp.department : '',
+          type: lv.leave_type,
+          fromDate: fromDt.toISOString(),
+          toDate: toDt.toISOString(),
+          days: lv.duration,
+          reason: lv.reason,
+          status: mapStatus(lv.status),
+          appliedOn: appliedDt.toISOString(),
+          employeeEmail: lv.employee,
+          appliedDateStr: lv.applied_date
+        };
+      });
+
+      setLeaveRequests(mapped);
+
+      // Stats calculation
+      const total = mapped.length;
+      const pending = mapped.filter(r => r.status === 'pending').length;
+      const approved = mapped.filter(r => r.status === 'approved').length;
+      const rejected = mapped.filter(r => r.status === 'rejected').length;
+      setLeaveStats({
+        totalRequests: total,
+        pending,
+        approved,
+        rejected,
+        avgProcessingTime: ''
+      });
+
+      // Leave types
+      setLeaveTypes(Array.from(new Set(mapped.map(r => r.type))) as string[]);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingLeaves(false);
+    }
+  };
+
   // initial load
   useEffect(() => {
     fetchHolidays();
+    fetchLeavesAndEmployees();
   }, []);
 
   const openAddHoliday = () => {
@@ -216,10 +251,26 @@ export default function AdminLeavePage() {
     setHolidayDialogOpen(true);
   };
 
-  const openEditHoliday = (h:any) => {
+  const openEditHoliday = (h: any) => {
+    // Convert dd-mm-yyyy to yyyy-mm-dd for <input type="date">
+    const toIso = (ddmmyyyy: string) => {
+      const parts = ddmmyyyy.split('-');
+      if (parts.length === 3) {
+        const [dd, mm, yy] = parts;
+        return `${yy}-${mm}-${dd}`;
+      }
+      return ddmmyyyy; // fallback
+    };
+
     setHolidayDialogMode('edit');
-    setHolidayForm({ name:h.name,date:h.date,type:h.type,description:h.description||'',recurring:h.recurring});
-    setEditingHoliday({name:h.name,date:h.date});
+    setHolidayForm({
+      name: h.name,
+      date: toIso(h.date), // ISO for input
+      type: h.type,
+      description: h.description || '',
+      recurring: h.recurring,
+    });
+    setEditingHoliday({ name: h.name, date: h.date }); // Keep original dd-mm-yyyy for path
     setHolidayDialogOpen(true);
   };
 
@@ -458,10 +509,7 @@ export default function AdminLeavePage() {
                                   <span className="font-medium text-gray-600">Days: </span>
                                   {request.days}
                                 </div>
-                                <div>
-                                  <span className="font-medium text-gray-600">Balance: </span>
-                                  {request.balance} days
-                                </div>
+                                {/* Balance data not available from backend; removed */}
                               </div>
                               
                               <div className="text-sm text-gray-600">
@@ -498,7 +546,7 @@ export default function AdminLeavePage() {
                                   <Button 
                                     size="sm" 
                                     className="bg-green-600 hover:bg-green-700"
-                                    onClick={() => handleApprove(request.id)}
+                                    onClick={() => handleApprove(request)}
                                   >
                                     <CheckCircle className="h-4 w-4 mr-1" />
                                     Approve
@@ -507,7 +555,7 @@ export default function AdminLeavePage() {
                                     size="sm" 
                                     variant="outline" 
                                     className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    onClick={() => handleReject(request.id)}
+                                    onClick={() => handleReject(request)}
                                   >
                                     <XCircle className="h-4 w-4 mr-1" />
                                     Reject

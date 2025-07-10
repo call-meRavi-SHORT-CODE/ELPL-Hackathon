@@ -25,7 +25,7 @@ import {
   FileText,
   TrendingUp
 } from 'lucide-react';
-import { format, parse, differenceInCalendarDays } from 'date-fns';
+import { format, parse, differenceInCalendarDays, isValid } from 'date-fns';
 
 export default function LeavePage() {
   const [dateFrom, setDateFrom] = useState<Date>();
@@ -33,10 +33,20 @@ export default function LeavePage() {
   const [leaveType, setLeaveType] = useState('');
   const [reason, setReason] = useState('');
 
-  const user = {
-    name: 'Ravikrishna J',
-    email: 'ravikrishna@epicallayouts.com'
-  };
+  // Retrieve the logged-in user from the session (set during sign-in)
+  const [user, setUser] = useState<{ name: string; email: string }>({ name: '', email: '' });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const session = localStorage.getItem('userSession');
+    if (session) {
+      const parsed = JSON.parse(session);
+      setUser({
+        name: parsed.employee?.name || parsed.user.displayName || '',
+        email: parsed.employee?.email || parsed.user.email || '',
+      });
+    }
+  }, []);
 
   const LEAVE_QUOTA: Record<string, number> = {
     casual: 12,
@@ -176,13 +186,20 @@ export default function LeavePage() {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
     const pending = toast({ title: 'Submitting leave…', duration: 60000 });
     try {
+      // Backend expects ISO dates; use yyyy-MM-dd
+      const toISO = (d: Date) => d.toISOString().split('T')[0];
+
+      const days = differenceInCalendarDays(dateTo, dateFrom) + 1;
       const payload = {
         employee: user.email,
         leave_type: leaveType,
-        from_date: dateFrom.toISOString().split('T')[0], // yyyy-mm-dd
-        to_date: dateTo.toISOString().split('T')[0],
+        from_date: toISO(dateFrom),
+        to_date: toISO(dateTo),
+        duration: String(days),
+        applied_date: toISO(new Date()),
         reason,
-      };
+        status: 'Pending',
+      } as any;
       const res = await fetch(`${apiBase}/leaves/`, {
         method: 'POST',
         headers: {
@@ -221,6 +238,19 @@ export default function LeavePage() {
       toast({ title: 'Network error', variant: 'destructive', duration: 4000 });
     }
     setIsSubmitting(false);
+  };
+
+  // Helper to safely parse date strings from backend (dd-mm-yyyy or yyyy-mm-dd)
+  const parseDateStr = (s: string): Date => {
+    if (!s) return new Date(NaN);
+    // Detect yyyy-mm-dd
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const d = new Date(s);
+      if (isValid(d)) return d;
+    }
+    // Fallback dd-mm-yyyy
+    const d = parse(s, 'dd-MM-yyyy', new Date());
+    return isValid(d) ? d : new Date(NaN);
   };
 
   return (
@@ -401,7 +431,10 @@ export default function LeavePage() {
                       {leavesLoading && <p>Loading…</p>}
                       {leavesError && <p className="text-red-600">{leavesError}</p>}
                       {!leavesLoading && leaves.map((request, idx) => {
-                        const days = parseInt(request.duration) || differenceInCalendarDays(new Date(request.to_date), new Date(request.from_date)) + 1;
+                        const fromDt = parseDateStr(request.from_date);
+                        const toDt = parseDateStr(request.to_date);
+                        const appliedDt = parseDateStr(request.applied_date);
+                        const days = parseInt(request.duration) || (isValid(fromDt) && isValid(toDt) ? differenceInCalendarDays(toDt, fromDt) + 1 : 0);
                         return (
                         <div key={idx} className="p-4 border rounded-lg hover:shadow-md transition-shadow duration-200">
                           <div className="flex items-start justify-between">
@@ -416,13 +449,15 @@ export default function LeavePage() {
                                 </Badge>
                               </div>
                               <p className="text-sm text-gray-600">
-                                {format(new Date(request.from_date), 'MMM dd, yyyy')} - {format(new Date(request.to_date), 'MMM dd, yyyy')}
+                                {isValid(fromDt) && isValid(toDt)
+                                  ? `${format(fromDt, 'MMM dd, yyyy')} - ${format(toDt, 'MMM dd, yyyy')}`
+                                  : request.from_date + ' - ' + request.to_date}
                               </p>
                               {request.reason && <p className="text-sm text-gray-500">{request.reason}</p>}
                             </div>
                             <div className="text-right">
                               <p className="font-semibold">{days} days</p>
-                              <p className="text-xs text-gray-500">Applied: {format(new Date(request.applied_date), 'MMM dd')}</p>
+                              {isValid(appliedDt) && <p className="text-xs text-gray-500">Applied: {format(appliedDt, 'MMM dd')}</p>}
                             </div>
                           </div>
                         </div>

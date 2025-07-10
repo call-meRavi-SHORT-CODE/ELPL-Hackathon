@@ -593,6 +593,17 @@ def list_document_requests() -> list[dict]:
         })
     return results
 
+def complete_document_request(row: int, file_id: str):
+    """Update Documents sheet row (1-based) to Completed and store file id in column F."""
+    svc = _get_sheets_service()
+    # Ensure row exists
+    svc.values().update(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"'{DOCUMENTS_SHEET_NAME}'!E{row}:F{row}",
+        valueInputOption="RAW",
+        body={"values": [["Completed", file_id]]},
+    ).execute()
+
 # ---------------------------------------------------------------------------
 # Timesheet helpers
 # ---------------------------------------------------------------------------

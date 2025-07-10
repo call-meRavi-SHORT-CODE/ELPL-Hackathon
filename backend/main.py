@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 # Email utility
 from email_utils import send_leave_status_email
 from drive import _get_or_create_profile_folder, delete_drive_file
+from drive import upload_file_to_folder, _get_or_create_documents_folder
 
 app = FastAPI()
 app.add_middleware(
@@ -545,6 +546,45 @@ async def send_timesheet_reminders(target_date: str | None = None):
                 print(f"[WARN] Failed to send reminder to {email_addr}: {exc}")
 
     return {"date": date_str, "reminders_sent": len(recipients), "recipients": recipients}
+
+@app.post("/documents/{row}/file")
+async def upload_completed_document(row: int, file: UploadFile = File(...)):
+    """Admin uploads completed document for a request identified by its sheet row number."""
+    # Fetch request row to get employee email
+    from sheets import _get_sheets_service, SPREADSHEET_ID, DOCUMENTS_SHEET_NAME, SHEET_NAME  # type: ignore
+    svc = _get_sheets_service()
+    resp = svc.values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"'{DOCUMENTS_SHEET_NAME}'!B{row}:B{row}",
+    ).execute()
+    vals = resp.get("values", [[]])
+    if not vals or not vals[0]:
+        raise HTTPException(404, "Document request not found")
+    email = vals[0][0]
+
+    # Find employee folder id from employee sheet
+    emp_row = find_employee_row(email)
+    if not emp_row:
+        raise HTTPException(404, "Employee not found")
+    emp_resp = svc.values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"{SHEET_NAME}!I{emp_row}:I{emp_row}",
+    ).execute()
+    folder_id = emp_resp.get("values", [[]])[0][0] if emp_resp.get("values") else None
+    if not folder_id:
+        raise HTTPException(500, "Employee Drive folder missing")
+
+    # Ensure Documents subfolder
+    docs_folder_id = _get_or_create_documents_folder(folder_id)
+
+    # Upload file
+    file_id = upload_file_to_folder(file, docs_folder_id)
+
+    # Update sheet status to Completed and store file id
+    from sheets import complete_document_request  # type: ignore
+    complete_document_request(row, file_id)
+
+    return {"status": "uploaded", "file_id": file_id}
 
 if __name__ == "__main__":
     import uvicorn

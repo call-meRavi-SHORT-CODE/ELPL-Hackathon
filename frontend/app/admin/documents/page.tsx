@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useRef } from 'react';
+import { toast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -30,44 +32,143 @@ export default function AdminDocumentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedRequestRow, setSelectedRequestRow] = useState<number|null>(null);
+  const fileInputRef = useRef<HTMLInputElement|null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleUploadClick = (row:number) => {
+    setSelectedRequestRow(row);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || selectedRequestRow===null) return;
+    const file = files[0];
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+    const form = new FormData();
+    form.append('file', file);
+    const pendingToast = toast({title:'Uploading…', duration:60000});
+    try {
+      setUploading(true);
+      const res = await fetch(`${apiBase}/documents/${selectedRequestRow}/file`,{
+        method:'POST',
+        body:form
+      });
+      if(res.ok){
+        // Optimistically update UI
+        setDocumentRequests(prev=>prev.map(r=>r.row===selectedRequestRow?{...r,status:'completed',completedDate:new Date().toISOString().split('T')[0]}:r));
+        pendingToast.dismiss();
+        toast({title:'Document uploaded', variant:'success', duration:3000});
+        // Optionally re-fetch to sync
+        setSelectedRequestRow(null);
+        setLoadingRequests(true);
+        await fetchData();
+      }else{
+        pendingToast.dismiss();
+        toast({title:'Upload failed', variant:'destructive', duration:4000});
+      }
+    }catch(err){console.error(err); toast({title:'Network error', variant:'destructive'});}finally{
+      e.target.value='';
+      setUploading(false);
+    }
+  };
 
   const user = {
     name: 'Admin User',
     email: 'admin@epicallayouts.com'
   };
 
-  const documentRequests = [
-    {
-      id: 1,
-      employee: 'Ravikrishna J',
-      department: 'Engineering',
-      type: 'Bonafide Certificate',
-      purpose: 'Bank loan application',
-      requestDate: '2025-01-20',
-      status: 'pending',
-      expectedDate: '2025-01-25'
-    },
-    {
-      id: 2,
-      employee: 'Priya Sharma',
-      department: 'Design',
-      type: 'Salary Certificate',
-      purpose: 'Visa application',
-      requestDate: '2025-01-15',
-      status: 'completed',
-      completedDate: '2025-01-18'
-    },
-    {
-      id: 3,
-      employee: 'Arjun Patel',
-      department: 'Marketing',
-      type: 'Experience Letter',
-      purpose: 'Job application',
-      requestDate: '2025-01-10',
-      status: 'in_progress',
-      expectedDate: '2025-01-22'
+  // ------------------------------------------------------------------
+  // Dynamic Document Requests – fetched from backend `/documents/`
+  // ------------------------------------------------------------------
+
+  type DocReqBackend = {
+    row: number;
+    email: string;
+    document_type: string;
+    reason: string;
+    status: string;
+    timestamp: string;
+  };
+
+  type DocReqUI = {
+    id: number; // index for React key
+    row: number; // sheet row for backend operations
+    employee: string;
+    department: string;
+    type: string;
+    purpose: string;
+    requestDate: string;
+    status: string;
+    expectedDate?: string;
+    completedDate?: string;
+  };
+
+  const [documentRequests, setDocumentRequests] = useState<DocReqUI[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(true);
+
+  const [documentStats, setDocumentStats] = useState({
+    totalRequests: 0,
+    pending: 0,
+    completed: 0,
+    inProgress: 0,
+    avgProcessingTime: ''
+  });
+
+  // Fetch requests + employee info
+  const fetchData = async () => {
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+    try {
+      const [reqRes, empRes] = await Promise.all([
+        fetch(`${apiBase}/documents/`),
+        fetch(`${apiBase}/employees/`),
+      ]);
+
+      const reqs: DocReqBackend[] = reqRes.ok ? await reqRes.json() : [];
+      const employees: any[] = empRes.ok ? await empRes.json() : [];
+
+      const mapped: DocReqUI[] = reqs.map((r, idx) => {
+        const emp = employees.find((e) => e.email.toLowerCase() === r.email.toLowerCase());
+        return {
+          id: idx + 1,
+          row: r.row,
+          employee: emp ? emp.name : r.email,
+          department: emp ? emp.department : '',
+          type: r.document_type,
+          purpose: r.reason || '',
+          requestDate: r.timestamp || '',
+          status: r.status.toLowerCase(),
+        };
+      });
+
+      setDocumentRequests(mapped);
+
+      // Stats
+      const total = mapped.length;
+      const pending = mapped.filter((d) => d.status === 'pending').length;
+      const completed = mapped.filter((d) => d.status === 'completed').length;
+      const inProgress = mapped.filter((d) => d.status.includes('progress')).length;
+
+      setDocumentStats({
+        totalRequests: total,
+        pending,
+        completed,
+        inProgress,
+        avgProcessingTime: '',
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingRequests(false);
     }
-  ];
+  };
+
+  // initial load
+  useEffect(() => {
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const companyDocuments = [
     {
@@ -107,14 +208,6 @@ export default function AdminDocumentsPage() {
       downloads: 19
     }
   ];
-
-  const documentStats = {
-    totalRequests: 15,
-    pending: 5,
-    completed: 8,
-    inProgress: 2,
-    avgProcessingTime: '3.2 days'
-  };
 
   const filteredRequests = documentRequests.filter(request => {
     const matchesSearch = request.employee.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -337,9 +430,9 @@ export default function AdminDocumentsPage() {
                                 <Eye className="h-4 w-4 mr-1" />
                                 View
                               </Button>
-                              {request.status === 'pending' && (
-                                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                                  Process
+                              {(request.status==='pending' || request.status==='in_progress') && (
+                                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={()=>handleUploadClick(request.row)} disabled={uploading}>
+                                  Upload
                                 </Button>
                               )}
                               {request.status === 'completed' && (
@@ -489,6 +582,8 @@ export default function AdminDocumentsPage() {
           </div>
         </main>
       </div>
+      {/* hidden file input */}
+      <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
     </div>
   );
 }

@@ -46,8 +46,11 @@ class LeaveStatus(str, Enum):
 class LeaveCreate(BaseModel):
     employee: EmailStr
     leave_type: str
+    from_date: date
+    to_date: date
     duration: str
     applied_date: date
+    reason: str | None = None
     status: LeaveStatus = LeaveStatus.PENDING
 
 
