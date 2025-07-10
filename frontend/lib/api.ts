@@ -96,6 +96,24 @@ export interface LeaveEntry {
   applied_date: string;
 }
 
+export async function deleteTimesheetEntry(rowId: string) {
+  const response = await fetch(`${API_BASE}/timesheets/${rowId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    let errorMsg = 'Failed to delete entry';
+    try {
+      const errorData = await response.json();
+      errorMsg = errorData.detail || errorMsg;
+    } catch (e) {
+      // ignore
+    }
+    throw new Error(errorMsg);
+  }
+
+  return response.json();
+}
 export async function fetchLeaves(): Promise<LeaveEntry[]> {
   const res = await fetch(`${API_BASE}/leaves/`, { next: { revalidate: 0 } });
   if (!res.ok) {

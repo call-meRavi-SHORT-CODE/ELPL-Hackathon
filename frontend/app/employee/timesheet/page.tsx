@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import { format, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks, addMonths, isSameDay, getDay, startOfDay } from 'date-fns';
 // Backend helpers
-import { fetchTimesheets, createTimesheetEntry } from '@/lib/api';
+import { fetchTimesheets, createTimesheetEntry,deleteTimesheetEntry } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
 interface TimeEntry {
@@ -280,6 +280,20 @@ export default function TimesheetPage() {
       return;
     }
 
+    // Add new project to project list if not already present
+    if (newEntry.project && !projects.some(p => p.name === newEntry.project)) {
+      setProjects(prev => [
+        ...prev,
+        {
+          id: `${prev.length + 1}`,
+          name: newEntry.project,
+          client: '',
+          color: '#6B7280', // default gray, or you can randomize
+          isActive: true,
+        },
+      ]);
+    }
+
     // Persist to backend
     const payload = {
       employee: user.email,
@@ -298,7 +312,7 @@ export default function TimesheetPage() {
       console.error(err);
       toast({ title: 'Error', description: 'Failed to save entry', variant: 'destructive' });
     }
- 
+
     setNewEntry({
       project: '',
       task: '',
@@ -310,8 +324,57 @@ export default function TimesheetPage() {
     setShowAddEntry(false);
   };
 
-  const deleteEntry = (id: string) => {
+  // Delete a single entry by id (UI and backend)
+  const deleteEntry = async (id: string) => {
+    const originalEntries = [...timeEntries];
+    // Optimistically update the UI
     setTimeEntries(prev => prev.filter(entry => entry.id !== id));
+    try {
+      await deleteTimesheetEntry(id);
+      toast({
+        title: 'Success',
+        description: 'Time entry deleted.',
+        variant: 'success',
+      });
+      // Optionally reload all data to ensure consistency
+      // await loadData();
+    } catch (error) {
+      console.error('Failed to delete time entry:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete entry. Reverting changes.',
+        variant: 'destructive',
+      });
+      // Revert UI change on failure
+      setTimeEntries(originalEntries);
+    }
+  };
+
+  // Delete a project (UI and backend)
+  const deleteProject = async (projectName: string) => {
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+    const pending = toast({ title: 'Deleting project…', duration: 60000 });
+    try {
+      const res = await fetch(`${apiBase}/projects/${encodeURIComponent(projectName)}`, {
+        method: 'DELETE',
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!res.ok) {
+        const errMsg = await res.text();
+        pending.dismiss && pending.dismiss();
+        toast({ title: 'Failed to delete project', description: errMsg, variant: 'destructive', duration: 4000 });
+        return;
+      }
+      // Reload data from backend after deletion
+      await loadData();
+      // Mark project as inactive instead of removing, to preserve color for old entries
+      setProjects(prev => prev.map(p => p.name === projectName ? { ...p, isActive: false } : p));
+      pending.dismiss && pending.dismiss();
+      toast({ title: 'Project deleted', description: `${projectName} and its timesheet entries removed.`, variant: 'success', duration: 4000 });
+    } catch (err) {
+      pending.dismiss && pending.dismiss();
+      toast({ title: 'Network error', description: 'Failed to delete project on server', variant: 'destructive', duration: 4000 });
+    }
   };
 
   const getProjectColor = (projectName: string) => {
@@ -866,24 +929,36 @@ export default function TimesheetPage() {
                   <div className="space-y-4">
                     <div>
                       <Label>Project</Label>
-                      <Select value={newEntry.project} onValueChange={(value) => setNewEntry(prev => ({ ...prev, project: value }))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select project" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {projects.filter(p => p.isActive).map((project) => (
-                            <SelectItem key={project.id} value={project.name}>
-                              <div className="flex items-center gap-2">
-                                <div 
-                                  className="w-3 h-3 rounded-full" 
-                                  style={{ backgroundColor: project.color }}
-                                />
-                                {project.name}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="flex gap-2">
+                        <Select
+                          value={newEntry.project}
+                          onValueChange={value => setNewEntry(prev => ({ ...prev, project: value }))}
+                        >
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Select previous project" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {projects.filter(p => p.isActive).map((project) => (
+                              <SelectItem key={project.id} value={project.name}>
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: project.color }}
+                                  />
+                                  {project.name}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="text"
+                          placeholder="Or enter new project"
+                          value={newEntry.project}
+                          onChange={e => setNewEntry(prev => ({ ...prev, project: e.target.value }))}
+                          className="flex-1"
+                        />
+                      </div>
                     </div>
 
                     <div>
