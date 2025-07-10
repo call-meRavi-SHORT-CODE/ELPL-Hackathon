@@ -67,17 +67,84 @@ export default function DocumentsPage() {
     'Insurance Documents'
   ];
 
-  // Currently no real document list from backend; keep one placeholder entry.
-  const myDocuments = [
-    {
-      id: 1,
-      name: 'Employment Contract 2024.pdf',
-      category: 'Contract',
-      uploadDate: '2024-01-15',
-      size: '2.4 MB',
-      status: 'active',
-    },
-  ];
+  const [documents, setDocuments] = useState<Array<{
+    id: string;
+    name: string;
+    type: string;
+    size: string;
+    created: string;
+    modified: string;
+  }>>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch documents from Drive
+  useEffect(() => {
+    if (!user.email) return;
+    
+    const fetchDocuments = async () => {
+      setIsLoading(true);
+      setError(null);
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+      
+      try {
+        console.log('Fetching documents for:', user.email);
+        const res = await fetch(`${apiBase}/employee/documents/${encodeURIComponent(user.email)}`);
+        console.log('Response status:', res.status);
+        
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          console.error('Error response:', errorData);
+          throw new Error(errorData.detail || `Failed to fetch documents (${res.status})`);
+        }
+        
+        const data = await res.json();
+        console.log('Documents received:', data);
+        
+        setDocuments(data.map((doc: any) => {
+          console.log('Processing document:', doc.name);
+          return {
+            ...doc,
+            size: formatFileSize(parseInt(doc.size)),
+            created: new Date(doc.created).toLocaleDateString(),
+            modified: new Date(doc.modified).toLocaleDateString()
+          };
+        }));
+      } catch (err: any) {
+        console.error('Error fetching documents:', err);
+        setError(err.message || 'Failed to load documents');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDocuments();
+  }, [user.email]);
+
+  // Helper function to format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  };
+
+  // Filter documents based on search and category
+  const filteredDocuments = documents.filter(doc => {
+    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || getDocumentCategory(doc.type) === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  // Helper to determine document category from MIME type
+  const getDocumentCategory = (mimeType: string): string => {
+    if (mimeType.includes('pdf')) return 'PDF';
+    if (mimeType.includes('spreadsheet')) return 'Spreadsheet';
+    if (mimeType.includes('document')) return 'Document';
+    if (mimeType.includes('image')) return 'Image';
+    return 'Other';
+  };
 
   type DocReq = {
     row: number;
@@ -180,13 +247,6 @@ export default function DocumentsPage() {
     setIsSubmitting(false);
   };
 
-  const filteredDocuments = myDocuments.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         doc.category.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || doc.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
-
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
@@ -203,7 +263,7 @@ export default function DocumentsPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-600">Total Documents</p>
-                      <p className="text-3xl font-bold text-blue-600">{myDocuments.length}</p>
+                      <p className="text-3xl font-bold text-blue-600">{documents.length}</p>
                     </div>
                     <div className="p-3 bg-blue-100 rounded-full">
                       <FileText className="h-6 w-6 text-blue-600" />
@@ -287,58 +347,102 @@ export default function DocumentsPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Categories</SelectItem>
-                          <SelectItem value="Contract">Contract</SelectItem>
-                          <SelectItem value="Tax Documents">Tax Documents</SelectItem>
-                          <SelectItem value="Insurance">Insurance</SelectItem>
-                          <SelectItem value="Experience">Experience</SelectItem>
+                          <SelectItem value="PDF">PDF</SelectItem>
+                          <SelectItem value="Spreadsheet">Spreadsheet</SelectItem>
+                          <SelectItem value="Document">Document</SelectItem>
+                          <SelectItem value="Image">Image</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
-                    {/* Documents List */}
-                    <div className="space-y-4">
-                      {filteredDocuments.map((document) => (
-                        <div key={document.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow duration-200">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <div className="p-2 bg-blue-100 rounded-lg">
-                                <FileText className="h-6 w-6 text-blue-600" />
-                              </div>
-                              <div>
-                                <h4 className="font-medium">{document.name}</h4>
-                                <div className="flex items-center gap-4 text-sm text-gray-500">
-                                  <span>{document.category}</span>
-                                  <span>•</span>
-                                  <span>{document.size}</span>
-                                  <span>•</span>
-                                  <span>Uploaded: {document.uploadDate}</span>
-                                </div>
-                              </div>
+                    {/* Document List */}
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <CardTitle>My Documents</CardTitle>
+                          <div className="flex gap-4">
+                            <div className="relative">
+                              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                              <Input
+                                placeholder="Search documents..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-10 w-64"
+                              />
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Badge variant={document.status === 'active' ? 'default' : 'secondary'}>
-                                {document.status}
-                              </Badge>
-                              <Button size="sm" variant="outline">
-                                <Eye className="h-4 w-4 mr-1" />
-                                View
-                              </Button>
-                              <Button size="sm" variant="outline">
-                                <Download className="h-4 w-4 mr-1" />
-                                Download
-                              </Button>
-                            </div>
+                            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                              <SelectTrigger className="w-40">
+                                <SelectValue placeholder="Category" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Categories</SelectItem>
+                                <SelectItem value="PDF">PDF</SelectItem>
+                                <SelectItem value="Spreadsheet">Spreadsheet</SelectItem>
+                                <SelectItem value="Document">Document</SelectItem>
+                                <SelectItem value="Image">Image</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
-                      ))}
-                    </div>
-
-                    {filteredDocuments.length === 0 && (
-                      <div className="text-center py-8">
-                        <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-gray-500">No documents found matching your criteria</p>
-                      </div>
-                    )}
+                      </CardHeader>
+                      
+                      <CardContent>
+                        {isLoading ? (
+                          <div className="flex items-center justify-center py-8">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                          </div>
+                        ) : error ? (
+                          <div className="text-center py-8 text-red-600">
+                            <AlertCircle className="h-8 w-8 mx-auto mb-2" />
+                            <p>{error}</p>
+                          </div>
+                        ) : filteredDocuments.length === 0 ? (
+                          <div className="text-center py-8 text-gray-500">
+                            <FileText className="h-8 w-8 mx-auto mb-2" />
+                            <p>No documents found</p>
+                          </div>
+                        ) : (
+                          <div className="divide-y">
+                            {filteredDocuments.map((doc) => (
+                              <div key={doc.id} className="py-4 flex items-center justify-between">
+                                <div className="flex items-center space-x-4">
+                                  <FileText className="h-6 w-6 text-blue-600" />
+                                  <div>
+                                    <p className="font-medium">{doc.name}</p>
+                                    <p className="text-sm text-gray-500">
+                                      {getDocumentCategory(doc.type)} • {doc.size} • Modified: {doc.modified}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => {
+                                      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+                                      const downloadUrl = `${apiBase}/employee/documents/${user.email}/${doc.id}/download`;
+                                      
+                                      // Create a temporary link element
+                                      const link = document.createElement('a');
+                                      link.href = downloadUrl;
+                                      link.download = doc.name; // Set the download filename
+                                      document.body.appendChild(link);
+                                      link.click();
+                                      document.body.removeChild(link);
+                                    }}
+                                  >
+                                    <Download className="h-4 w-4 mr-1" />
+                                    Download
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
                   </CardContent>
                 </Card>
               </TabsContent>

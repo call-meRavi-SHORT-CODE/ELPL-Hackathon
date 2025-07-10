@@ -164,7 +164,8 @@ async def get_employee(email: str):
 
 
 from fastapi.responses import StreamingResponse
-from io import BytesIO
+import io
+from googleapiclient.http import MediaIoBaseDownload
 
 
 @app.get("/employees/{email}/photo")
@@ -207,9 +208,7 @@ async def get_profile_photo(email: str):
     mime_type = meta.get("mimeType", "application/octet-stream")
 
     # Download the file content into memory (photos are small)
-    fh: BytesIO = BytesIO()
-    from googleapiclient.http import MediaIoBaseDownload  # type: ignore
-
+    fh: io.BytesIO = io.BytesIO()
     request = drive_svc.files().get_media(fileId=photo_file_id)
     downloader = MediaIoBaseDownload(fh, request)
     done = False
@@ -645,6 +644,102 @@ async def upload_completed_document(row: int, file: UploadFile = File(...)):
     complete_document_request(row, file_id)
 
     return {"status": "uploaded", "file_id": file_id}
+
+@app.get("/employee/documents/{email}")
+async def list_employee_documents(email: str):
+    """List all documents in an employee's Drive folder."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"Listing documents for employee: {email}")
+    
+    # Find employee row to get folder ID
+    row = find_employee_row(email)
+    if not row:
+        logger.error(f"Employee not found: {email}")
+        raise HTTPException(404, "Employee not found")
+    
+    logger.info(f"Found employee at row: {row}")
+    
+    # Get folder ID from sheet
+    from sheets import _get_sheets_service, SPREADSHEET_ID, SHEET_NAME
+    svc = _get_sheets_service()
+    resp = svc.values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"{SHEET_NAME}!I{row}:I{row}"
+    ).execute()
+    vals = resp.get("values", [[]])
+    folder_id = vals[0][0] if vals and len(vals[0]) > 0 else None
+    
+    logger.info(f"Retrieved folder ID: {folder_id}")
+    
+    if not folder_id:
+        logger.error(f"Employee folder not found for {email}")
+        raise HTTPException(404, "Employee folder not found")
+    
+    # List documents from Drive
+    from drive import list_employee_documents
+    try:
+        logger.info("Calling list_employee_documents...")
+        documents = list_employee_documents(folder_id)
+        logger.info(f"Found {len(documents)} documents")
+        return documents
+    except Exception as e:
+        logger.error(f"Failed to list documents: {str(e)}")
+        raise HTTPException(500, f"Failed to list documents: {str(e)}")
+
+@app.get("/employee/documents/{email}/{file_id}/view")
+async def view_document(email: str, file_id: str):
+    """Get a view URL for a document."""
+    # Verify employee exists
+    if not find_employee_row(email):
+        raise HTTPException(404, "Employee not found")
+    
+    # Return Google Drive viewer URL
+    return {
+        "url": f"https://drive.google.com/file/d/{file_id}/view"
+    }
+
+@app.get("/employee/documents/{email}/{file_id}/download")
+async def download_document(email: str, file_id: str):
+    """Download a document directly from Drive."""
+    # Verify employee exists
+    if not find_employee_row(email):
+        raise HTTPException(404, "Employee not found")
+    
+    try:
+        # Get Drive service
+        from drive import _get_drive_service
+        service = _get_drive_service()
+        
+        # Get file metadata first to get the filename and mime type
+        file_metadata = service.files().get(fileId=file_id, fields="name,mimeType").execute()
+        
+        # Create request to download the file
+        request = service.files().get_media(fileId=file_id)
+        file_stream = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_stream, request)
+        
+        # Download the file
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        
+        # Reset stream position
+        file_stream.seek(0)
+        
+        # Return the file as a streaming response
+        return StreamingResponse(
+            file_stream,
+            media_type=file_metadata['mimeType'],
+            headers={
+                'Content-Disposition': f'attachment; filename="{file_metadata["name"]}"'
+            }
+        )
+        
+    except Exception as e:
+        logger.exception("Failed to download file")
+        raise HTTPException(500, f"Failed to download file: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

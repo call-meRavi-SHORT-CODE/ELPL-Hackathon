@@ -179,3 +179,57 @@ def delete_drive_file(file_id: str):
         else:
             logger.exception("Failed to delete file")
             raise
+
+
+def list_employee_documents(base_folder_id: str) -> list:
+    """List all documents in an employee's Documents folder."""
+    svc = _get_drive_service()
+    logger.info(f"Listing documents for base folder: {base_folder_id}")
+    
+    # Get Documents folder ID
+    docs_folder_id = _get_or_create_documents_folder(base_folder_id)
+    logger.info(f"Documents folder ID: {docs_folder_id}")
+    
+    # List files in Documents folder
+    query = (
+        f"'{docs_folder_id}' in parents and "
+        "trashed = false"
+    )
+    logger.info(f"Using query: {query}")
+    
+    try:
+        results = []
+        page_token = None
+        while True:
+            logger.info("Fetching page of results...")
+            response = svc.files().list(
+                q=query,
+                spaces="drive",
+                fields="nextPageToken, files(id, name, mimeType, size, createdTime, modifiedTime)",
+                pageToken=page_token
+            ).execute()
+            
+            files = response.get('files', [])
+            logger.info(f"Found {len(files)} files in this page")
+            
+            for file in files:
+                logger.info(f"Processing file: {file['name']} ({file['id']})")
+                results.append({
+                    'id': file['id'],
+                    'name': file['name'],
+                    'type': file['mimeType'],
+                    'size': file.get('size', '0'),  # in bytes
+                    'created': file['createdTime'],
+                    'modified': file['modifiedTime']
+                })
+                
+            page_token = response.get('nextPageToken')
+            if not page_token:
+                break
+                
+        logger.info(f"Total documents found: {len(results)}")
+        return results
+        
+    except Exception as e:
+        logger.exception(f"Failed to list employee documents: {str(e)}")
+        raise
