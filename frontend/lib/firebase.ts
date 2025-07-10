@@ -1,0 +1,20 @@
+import { initializeApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBPuL-o_9u-8MszF4v7HRa7WgKRRsjgquo",
+  authDomain: "elpl-1ac90.firebaseapp.com",
+  projectId: "elpl-1ac90",
+  storageBucket: "elpl-1ac90.firebasestorage.app",
+  messagingSenderId: "1057189496620",
+  appId: "1:1057189496620:web:037bdd91d4a11e398c4e89",
+  measurementId: "G-3WMENZFDC4"
+};
+
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db   = getFirestore(app);
+
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: "select_account" });

@@ -3,6 +3,9 @@
 Thumbs.db
 *.log
 
+frontend/lib/firebase.ts
+
+
 # ---- Python backend ----
 __pycache__/
 *.py[cod]

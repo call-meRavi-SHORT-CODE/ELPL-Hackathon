@@ -186,9 +186,8 @@ export default function LeavePage() {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
     const pending = toast({ title: 'Submitting leave…', duration: 60000 });
     try {
-      // Backend expects ISO dates; use yyyy-MM-dd
-      const toISO = (d: Date) => d.toISOString().split('T')[0];
-
+      // Backend expects ISO 8601 date strings (yyyy-MM-dd)
+      const toISO = (d: Date) => format(d, 'yyyy-MM-dd');
       const days = differenceInCalendarDays(dateTo, dateFrom) + 1;
       const payload = {
         employee: user.email,

@@ -1,3 +1,56 @@
+# ---------------------------------------------------------------------------
+# Timesheet project deletion helper
+# ---------------------------------------------------------------------------
+
+def delete_project_entries(project_name: str) -> int:
+    """
+    Delete all timesheet rows for the given project (case-insensitive).
+    Returns the number of rows deleted.
+    """
+    svc = _get_sheets_service()
+    # Get all timesheet rows
+    resp = svc.values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"'{TIMESHEET_SHEET_NAME}'!A:G"
+    ).execute()
+    rows = resp.get("values", [])
+    # Find all row indices (1-based) where project matches
+    to_delete = []
+    for idx, row in enumerate(rows, start=1):
+        padded = row + [""] * (7 - len(row))
+        proj = padded[3]
+        if proj and proj.strip().lower() == project_name.strip().lower():
+            to_delete.append(idx)
+    if not to_delete:
+        return 0
+    # Get sheet id
+    meta = svc.get(spreadsheetId=SPREADSHEET_ID).execute()
+    sheet_id = None
+    for sht in meta.get("sheets", []):
+        props = sht.get("properties", {})
+        if props.get("title") == TIMESHEET_SHEET_NAME:
+            sheet_id = props.get("sheetId")
+            break
+    if sheet_id is None:
+        raise ValueError(f"Sheet '{TIMESHEET_SHEET_NAME}' not found")
+    # Delete rows in reverse order to avoid shifting
+    requests = []
+    for row_idx in sorted(to_delete, reverse=True):
+        requests.append({
+            "deleteDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": row_idx - 1,
+                    "endIndex": row_idx
+                }
+            }
+        })
+    svc.batchUpdate(
+        spreadsheetId=SPREADSHEET_ID,
+        body={"requests": requests}
+    ).execute()
+    return len(to_delete)
 import logging
 from datetime import date
 from auth import get_credentials
@@ -731,6 +784,59 @@ def list_timesheets(
         )
 
     return results
+# ---------------------------------------------------------------------------
+# Timesheet project deletion helper
+# ---------------------------------------------------------------------------
+
+def delete_project_entries(project_name: str) -> int:
+    """
+    Delete all timesheet rows for the given project (case-insensitive).
+    Returns the number of rows deleted.
+    """
+    svc = _get_sheets_service()
+    # Get all timesheet rows
+    resp = svc.values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"'{TIMESHEET_SHEET_NAME}'!A:G"
+    ).execute()
+    rows = resp.get("values", [])
+    # Find all row indices (1-based) where project matches
+    to_delete = []
+    for idx, row in enumerate(rows, start=1):
+        padded = row + [""] * (7 - len(row))
+        proj = padded[3]
+        if proj and proj.strip().lower() == project_name.strip().lower():
+            to_delete.append(idx)
+    if not to_delete:
+        return 0
+    # Get sheet id
+    meta = svc.get(spreadsheetId=SPREADSHEET_ID).execute()
+    sheet_id = None
+    for sht in meta.get("sheets", []):
+        props = sht.get("properties", {})
+        if props.get("title") == TIMESHEET_SHEET_NAME:
+            sheet_id = props.get("sheetId")
+            break
+    if sheet_id is None:
+        raise ValueError(f"Sheet '{TIMESHEET_SHEET_NAME}' not found")
+    # Delete rows in reverse order to avoid shifting
+    requests = []
+    for row_idx in sorted(to_delete, reverse=True):
+        requests.append({
+            "deleteDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": row_idx - 1,
+                    "endIndex": row_idx
+                }
+            }
+        })
+    svc.batchUpdate(
+        spreadsheetId=SPREADSHEET_ID,
+        body={"requests": requests}
+    ).execute()
+    return len(to_delete)
 
 
 def summarize_timesheets(employee: str, start_date: date, end_date: date) -> dict:
@@ -756,3 +862,43 @@ def summarize_timesheets(employee: str, start_date: date, end_date: date) -> dic
         "total_hours": total_hours,
         "entries": len(entries),
     }
+
+def delete_timesheet_entry(row_id: str) -> bool:
+    """
+    Delete a single timesheet row by its 1-based row id (as string or int).
+    Returns True if deleted, False if not found.
+    """
+    try:
+        row_idx = int(row_id)
+    except Exception:
+        return False
+    svc = _get_sheets_service()
+    # Get sheet id
+    meta = svc.get(spreadsheetId=SPREADSHEET_ID).execute()
+    sheet_id = None
+    for sht in meta.get("sheets", []):
+        props = sht.get("properties", {})
+        if props.get("title") == TIMESHEET_SHEET_NAME:
+            sheet_id = props.get("sheetId")
+            break
+    if sheet_id is None:
+        return False
+    # Delete the row
+    svc.batchUpdate(
+        spreadsheetId=SPREADSHEET_ID,
+        body={
+            "requests": [
+                {
+                    "deleteDimension": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "dimension": "ROWS",
+                            "startIndex": row_idx - 1,
+                            "endIndex": row_idx
+                        }
+                    }
+                }
+            ]
+        }
+    ).execute()
+    return True
