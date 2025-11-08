@@ -9,7 +9,7 @@ def _scopes_missing(creds) -> bool:
     if creds is None:
         return True
     if creds.scopes is None:
-        # Treat None (unlimited) as missing to be safe
+        
         return False  # None usually indicates all scopes; assume ok
     return not set(SCOPES).issubset(set(creds.scopes))
 
@@ -41,3 +41,4 @@ def get_credentials():
             pickle.dump(creds, token)
 
     return creds
+
