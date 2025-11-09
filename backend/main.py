@@ -99,6 +99,31 @@ async def edit_employee(email: str, payload: EmployeeUpdate):
     return {"status": "updated", "row": row}
 
 
+
+# ---------------------------------------------------------------------------
+# Get single employee endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.get("/employees/{email}")
+async def get_employee(email: str):
+    """Return a single employee record looked-up by email (case-insensitive).
+
+    The response mirrors an item from ``/employees/`` but adds a convenience
+    ``photo_url`` field that can be embedded directly in an <img/> tag if the
+    employee has a profile photo stored in Drive.
+    """
+    employees = list_employees()
+    match = next((e for e in employees if e["email"].lower() == email.lower()), None)
+    if not match:
+        raise HTTPException(404, "Employee not found")
+
+    photo_id = match.get("photo_file_id")
+    if photo_id:
+        match["photo_url"] = f"https://drive.google.com/uc?id={photo_id}"
+    return match
+
+
 # ---------------------------------------------------------------------------
 # Delete employee endpoint
 # ---------------------------------------------------------------------------
@@ -135,28 +160,7 @@ async def remove_employee(email: str):
 async def list_all_employees():
     return list_employees()
 
-# ---------------------------------------------------------------------------
-# Get single employee endpoint
-# ---------------------------------------------------------------------------
 
-
-@app.get("/employees/{email}")
-async def get_employee(email: str):
-    """Return a single employee record looked-up by email (case-insensitive).
-
-    The response mirrors an item from ``/employees/`` but adds a convenience
-    ``photo_url`` field that can be embedded directly in an <img/> tag if the
-    employee has a profile photo stored in Drive.
-    """
-    employees = list_employees()
-    match = next((e for e in employees if e["email"].lower() == email.lower()), None)
-    if not match:
-        raise HTTPException(404, "Employee not found")
-
-    photo_id = match.get("photo_file_id")
-    if photo_id:
-        match["photo_url"] = f"https://drive.google.com/uc?id={photo_id}"
-    return match
 
 # ---------------------------------------------------------------------------
 # Employee profile photo retrieval endpoint
