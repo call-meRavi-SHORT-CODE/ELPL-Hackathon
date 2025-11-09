@@ -283,6 +283,13 @@ async def remove_holiday(name: str, date: str):
 # ---------------------------------------------------------------------------
 
 
+
+
+
+@app.get("/leaves/")
+async def get_leaves():
+    return list_leaves()
+
 @app.post("/leaves/")
 async def request_leave(payload: LeaveCreate):
     # Duplicate prevention: same employee + applied_date (today)
@@ -293,11 +300,6 @@ async def request_leave(payload: LeaveCreate):
     # Append to sheet
     row = append_leave(payload.dict())
     return {"row": row, "status": payload.status.value.lower()}
-
-
-@app.get("/leaves/")
-async def get_leaves():
-    return list_leaves()
 
 
 @app.patch("/leaves/{employee}/{applied_date}")
